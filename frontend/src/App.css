@@ -1,0 +1,227 @@
+/* TS Operator Minion v1 - Custom Styles */
+
+/* Layout */
+.app-container {
+    min-height: 100vh;
+    background-color: #09090B;
+}
+
+.sidebar {
+    width: 240px;
+    border-right: 1px solid #27272A;
+    background-color: #09090B;
+    min-height: 100vh;
+}
+
+.main-content {
+    flex: 1;
+    padding: 24px 32px;
+    background-color: #09090B;
+}
+
+/* Cards - Flat, no shadows */
+.card-flat {
+    background-color: transparent;
+    border: 1px solid #27272A;
+    border-radius: 0;
+}
+
+.card-flat:hover {
+    background-color: #18181B;
+}
+
+/* Table styles */
+.table-dense th {
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #71717A;
+    padding: 12px 16px;
+    border-bottom: 1px solid #27272A;
+}
+
+.table-dense td {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.875rem;
+    padding: 12px 16px;
+    border-bottom: 1px solid #27272A;
+}
+
+.table-dense tr:hover {
+    background-color: #18181B;
+}
+
+/* Badge variants */
+.badge-flat {
+    border-radius: 0;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: 1px solid;
+    background-color: transparent;
+}
+
+/* Score display */
+.score-display {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+}
+
+.score-high { color: #34C759; }
+.score-medium { color: #FFCC00; }
+.score-low { color: #FF3B30; }
+
+/* Buttons */
+.btn-primary {
+    background-color: #FAFAFA;
+    color: #09090B;
+    border: none;
+    padding: 8px 16px;
+    font-weight: 500;
+    transition: background-color 150ms ease-linear;
+}
+
+.btn-primary:hover {
+    background-color: #E4E4E7;
+}
+
+.btn-secondary {
+    background-color: transparent;
+    color: #FAFAFA;
+    border: 1px solid #27272A;
+    padding: 8px 16px;
+    font-weight: 500;
+    transition: all 150ms ease-linear;
+}
+
+.btn-secondary:hover {
+    background-color: #18181B;
+}
+
+/* Input styles */
+.input-flat {
+    background-color: transparent;
+    border: 1px solid #27272A;
+    border-radius: 0;
+    color: #FAFAFA;
+    padding: 8px 12px;
+}
+
+.input-flat:focus {
+    border-color: #52525B;
+    outline: none;
+    box-shadow: none;
+}
+
+.input-flat::placeholder {
+    color: #71717A;
+}
+
+/* Labels */
+.label-uppercase {
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #71717A;
+}
+
+/* Workspace split */
+.workspace-sidebar {
+    width: 320px;
+    border-left: 1px solid #27272A;
+    background-color: #09090B;
+    padding: 24px;
+}
+
+/* Content preview */
+.content-preview {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: #A1A1AA;
+    white-space: pre-wrap;
+    background-color: #18181B;
+    padding: 16px;
+    border: 1px solid #27272A;
+}
+
+/* Activity log */
+.activity-item {
+    padding: 12px 0;
+    border-bottom: 1px solid #27272A;
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+/* Loading state */
+.loading-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Nav link active */
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    color: #A1A1AA;
+    transition: all 150ms ease-linear;
+    border-left: 2px solid transparent;
+}
+
+.nav-link:hover {
+    color: #FAFAFA;
+    background-color: #18181B;
+}
+
+.nav-link.active {
+    color: #FAFAFA;
+    background-color: #18181B;
+    border-left-color: #FAFAFA;
+}
+
+/* Stat card */
+.stat-card {
+    padding: 20px;
+    border: 1px solid #27272A;
+    background-color: transparent;
+}
+
+.stat-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 2rem;
+    font-weight: 600;
+    color: #FAFAFA;
+    letter-spacing: -0.02em;
+}
+
+.stat-label {
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: 0.75rem;
+    color: #71717A;
+    margin-top: 4px;
+}
+
+/* Recommendations list */
+.recommendation-item {
+    padding: 12px;
+    border: 1px solid #27272A;
+    margin-bottom: 8px;
+    background-color: transparent;
+}
+
+.recommendation-item:hover {
+    background-color: #18181B;
+}

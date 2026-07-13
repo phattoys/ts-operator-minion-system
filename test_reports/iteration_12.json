@@ -1,0 +1,121 @@
+{
+  "summary": "Lead Magnet Minion module testing complete. Backend: 28/28 tests passed (100%). Frontend: All core flows working - library page, create modal, workspace, navigation. Fixed critical PDF generation bug (FPDF multi_cell x-position reset issue).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Lead Magnet Library", "issues": ["Stats cards missing when loading (shows 'Loading lead magnets...' but stats load separately)"]}
+    ]
+  },
+  "passed_tests": [
+    "Auth: All lead magnet endpoints require authentication (401 without token)",
+    "Validation: Topic must be 3-120 characters",
+    "Validation: Format must be one of: Guide, Checklist, Resource List, FAQ, Quiz",
+    "CRUD: POST /api/lead-magnets creates magnet with correct structure",
+    "CRUD: GET /api/lead-magnets returns list with filters (status, format_type)",
+    "CRUD: GET /api/lead-magnets/{id} returns single magnet",
+    "CRUD: PUT /api/lead-magnets/{id} updates fields",
+    "CRUD: DELETE /api/lead-magnets/{id} deletes draft magnets",
+    "Stats: GET /api/lead-magnets/stats returns total, by_status, by_format, published_count, draft_count, total_downloads",
+    "Content Generation: POST /api/lead-magnets/{id}/generate creates content via GPT-5.2 LLM",
+    "Content Generation: Returns title, subtitle, description, markdown_content, landing_headline, landing_body, landing_cta",
+    "PDF Generation: POST /api/lead-magnets/{id}/generate-pdf requires content first",
+    "PDF Generation: Creates PDF file and sets has_pdf=true",
+    "PDF Preview: GET /api/lead-magnets/{id}/preview-pdf returns PDF with correct content-type",
+    "Mark Ready: POST /api/lead-magnets/{id}/mark-ready validates title, landing snippet, and PDF",
+    "Publish: POST /api/lead-magnets/{id}/publish requires Ready status",
+    "Publish: Sets status to Published and generates embed_code",
+    "Archive: POST /api/lead-magnets/{id}/archive sets status to Archived",
+    "Delete Protection: Cannot delete published magnets (returns 400)",
+    "Version History: GET /api/lead-magnets/{id}/versions returns version list",
+    "Version Restore: POST /api/lead-magnets/{id}/versions/{version_id}/restore works",
+    "Public Download: GET /api/lm/{public_id}/download returns 404 for nonexistent",
+    "Public Download: Requires Published status",
+    "Public Download: Increments download_count",
+    "Full E2E Flow: Create -> Generate -> PDF -> Mark Ready -> Publish -> Download",
+    "Frontend: Lead Magnet Library page loads at /lead-magnets",
+    "Frontend: Stats cards show total, published, drafts, downloads",
+    "Frontend: Search and format/status filters present",
+    "Frontend: New Lead Magnet modal has all fields (topic, audience, format, length, district, direction, disclaimer)",
+    "Frontend: Create flow navigates to workspace",
+    "Frontend: Workspace shows empty state with Generate Content button",
+    "Frontend: Navigation has Lead Magnets section in sidebar"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_lead_magnets.py",
+    "/app/test_reports/pytest/pytest_lead_magnets.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/services/lead_magnet_generation.py",
+    "/app/backend/routes/lead_magnet.py",
+    "/app/backend/tests/test_lead_magnets.py"
+  ],
+  "success_rate": {
+    "backend": "100% (28/28 tests passed)",
+    "frontend": "100% (all UI flows working)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "Multiple test lead magnets created during testing (prefixed with TEST_)",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Lead Magnet Minion fully tested. All CRUD, content generation (LLM), PDF generation, publish flow, version history, and public download working. Fixed critical PDF generation bug where FPDF multi_cell was not resetting x-position after each call, causing 'Not enough horizontal space' error. Also added comprehensive Unicode sanitization for PDF content. Known data state: 5+ lead magnets exist, some published with PDFs.",
+  "bugs_fixed": [
+    {
+      "issue": "PDF generation failing with 'Not enough horizontal space to render a single character'",
+      "root_cause": "FPDF multi_cell() does not reset x-position to left margin after rendering. Subsequent multi_cell calls start at the right edge of the page.",
+      "fix": "Added new_x='LMARGIN', new_y='NEXT' parameters to all multi_cell() calls in generate_pdf_bytes()",
+      "files_modified": ["/app/backend/services/lead_magnet_generation.py"]
+    },
+    {
+      "issue": "PDF generation failing with Unicode character errors",
+      "root_cause": "LLM-generated content contains Unicode characters (curly quotes, em dashes, etc.) that Helvetica font doesn't support",
+      "fix": "Enhanced sanitize_text_for_pdf() function to replace all Unicode characters with ASCII equivalents",
+      "files_modified": ["/app/backend/services/lead_magnet_generation.py"]
+    }
+  ],
+  "verified_features": {
+    "lead_magnet_crud": {
+      "create": "Working - returns magnet with id, public_id, status=Draft",
+      "list": "Working - supports status and format_type filters",
+      "get": "Working - returns full magnet details",
+      "update": "Working - updates fields and creates version on content change",
+      "delete": "Working - only for non-published magnets"
+    },
+    "content_generation": {
+      "generate": "Working - calls GPT-5.2 via Emergent LLM key, returns structured content",
+      "regenerate": "Working - creates new version",
+      "timeout": "15-30 seconds typical for LLM response"
+    },
+    "pdf_generation": {
+      "generate": "Working - creates PDF file in /app/backend/pdf_storage/",
+      "preview": "Working - returns PDF with inline disposition",
+      "unicode_handling": "Working - sanitizes all Unicode to ASCII"
+    },
+    "publish_flow": {
+      "mark_ready": "Working - validates title, landing snippet, has_pdf",
+      "publish": "Working - sets status=Published, generates embed_code",
+      "archive": "Working - sets status=Archived"
+    },
+    "public_download": {
+      "endpoint": "GET /api/lm/{public_id}/download",
+      "auth": "No auth required",
+      "counter": "Increments download_count on each download"
+    },
+    "version_history": {
+      "list": "Working - returns up to 20 versions",
+      "restore": "Working - restores content from version"
+    },
+    "frontend": {
+      "library_page": "Working - stats, search, filters, list",
+      "create_modal": "Working - all 7 form fields",
+      "workspace": "Working - shows metadata, actions, tabs",
+      "navigation": "Working - Lead Magnets section in sidebar"
+    }
+  }
+}

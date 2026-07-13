@@ -1,0 +1,115 @@
+{
+  "summary": "Cost Notes and Quick Re-import features testing complete. Backend: 22/22 tests passed (100%). Frontend: All UI elements verified. Cost Notes panel shows saved notes, Parse & Apply button triggers LLM parsing, items show updated prices ($4.50 cost, $14.99 retail). Mark Ready & Export button correctly shows 'Mark Ready & Export' when items are in review. 62 items exported, 1 held back (White Fishnet Bodysuit with 3+ duplicate flags).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: POST /api/intake/sessions/{session_id}/apply-cost-notes returns correct structure (applied, total_items, matches, message)",
+    "Backend: apply-cost-notes returns rules_parsed count",
+    "Backend: apply-cost-notes matches have details (note, matched_items, confidence)",
+    "Backend: apply-cost-notes requires authentication (401)",
+    "Backend: apply-cost-notes returns 404 for nonexistent session",
+    "Backend: apply-cost-notes rejects empty notes (400)",
+    "Backend: apply-cost-notes rejects whitespace-only notes (400)",
+    "Backend: Cost notes update item prices (unit_cost and suggested_price)",
+    "Backend: Cost note text stored in attribute_suggestions.cost_note for audit trail",
+    "Backend: Cost notes saved on session object",
+    "Backend: POST /api/intake/sessions/{session_id}/mark-ready-export returns exported/newly_ready/demoted/held_back counts",
+    "Backend: mark-ready-export returns demoted_items array",
+    "Backend: mark-ready-export returns csv_data and csv_filename",
+    "Backend: mark-ready-export re-validates existing ready items (demotes broken ones)",
+    "Backend: mark-ready-export promotes eligible in_review items to ready",
+    "Backend: CSV row count matches exported count",
+    "Backend: All items in CSV have Published=0 (never auto-publish)",
+    "Backend: Session has last_exported_at after export",
+    "Backend: mark-ready-export is idempotent (repeated calls produce consistent results)",
+    "Backend: mark-ready-export requires authentication (401)",
+    "Backend: mark-ready-export returns 404 for nonexistent session",
+    "Backend: Cost notes prices appear in re-exported CSV",
+    "Frontend: Login works with password TSFounder!Vault2026#Secure",
+    "Frontend: Cost Notes button toggles the cost notes panel",
+    "Frontend: Cost notes textarea shows previously saved notes ('all items cost $4.50 and retail at $14.99')",
+    "Frontend: Parse & Apply button present and triggers cost note application",
+    "Frontend: Mark Ready & Export button shows 'Mark Ready & Export' when items are in review",
+    "Frontend: Status summary shows 'Needs Info: 0 | In Review: 1 | Ready: 62'",
+    "Frontend: Items table shows 63 items with updated prices ($4.50 cost, $14.99 retail)",
+    "Frontend: Items show DUP badges for items with duplicate flags",
+    "Frontend: Items show confidence badges (percentages)",
+    "Frontend: White Fishnet Bodysuit shows 'In Review' status (held back due to 3+ duplicate flags)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_cost_notes_and_reimport.py",
+    "/app/test_reports/pytest/pytest_cost_notes_reimport.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_cost_notes_and_reimport.py"
+  ],
+  "success_rate": {
+    "backend": "100% (22/22 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "No new data created - verified existing SHEIN session with 63 items (62 ready, 1 held back)",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Cost Notes and Quick Re-import features fully tested. Key endpoints: POST /api/intake/sessions/{session_id}/apply-cost-notes (parses founder notes via LLM, matches to items by category/title keywords, applies unit_cost and suggested_price), POST /api/intake/sessions/{session_id}/mark-ready-export (3-phase: re-validate ready items, promote eligible in_review items, export ALL ready items as WooCommerce CSV). Cost notes are stored in attribute_suggestions.cost_note for audit trail and on session.cost_notes. Session tracks last_exported_at timestamp. SHEIN session e54de4dc-5308-4b63-b1e1-f9af5f7d3225 has 63 items: 62 ready, 1 held back (White Fishnet Bodysuit with 3 duplicate flags). Frontend shows Cost Notes button that toggles panel, textarea shows saved notes, Parse & Apply button triggers LLM parsing.",
+  "verified_features": {
+    "cost_notes_endpoint": {
+      "url": "POST /api/intake/sessions/{session_id}/apply-cost-notes",
+      "request_body": {"cost_notes": "string - informal cost/pricing notes"},
+      "response_fields": ["applied", "total_items", "rules_parsed", "matches", "message"],
+      "match_details": ["note", "matched_items", "unit_cost", "retail_price", "confidence", "reason"],
+      "llm_powered": true,
+      "audit_trail": "attribute_suggestions.cost_note stores the note text",
+      "session_storage": "session.cost_notes stores the raw notes"
+    },
+    "mark_ready_export_endpoint": {
+      "url": "POST /api/intake/sessions/{session_id}/mark-ready-export",
+      "response_fields": ["exported", "newly_ready", "demoted", "held_back", "demoted_items", "held_back_items", "csv_data", "csv_filename", "exported_at"],
+      "three_phase_process": {
+        "phase_1": "Re-validate existing ready items (demote failures)",
+        "phase_2": "Validate in_review items (promote eligible)",
+        "phase_3": "Export ALL currently ready items as WooCommerce CSV"
+      },
+      "validation_rules": {
+        "missing_fields": "clean_title, short_description, category, price",
+        "low_confidence": "score < 0.4",
+        "unresolved_duplicates": "3+ duplicate_flags"
+      },
+      "session_tracking": "last_exported_at timestamp updated after export"
+    },
+    "frontend_ui": {
+      "cost_notes_toggle_btn": "[data-testid='cost-notes-toggle-btn'] - toggles cost notes panel",
+      "cost_notes_panel": "[data-testid='cost-notes-panel'] - shows Founder Cost Notes header",
+      "cost_notes_textarea": "[data-testid='cost-notes-textarea'] - shows saved notes from session",
+      "apply_cost_notes_btn": "[data-testid='apply-cost-notes-btn'] - Parse & Apply button",
+      "mark_ready_export_btn": "[data-testid='mark-ready-export-btn'] - shows 'Mark Ready & Export' or 'Re-export Woo CSV (N)'",
+      "export_result_banner": "[data-testid='export-result-banner'] - shows exported/newly_ready/demoted/held_back counts"
+    },
+    "shein_session": {
+      "id": "e54de4dc-5308-4b63-b1e1-f9af5f7d3225",
+      "source_store": "SHEIN",
+      "item_count": 63,
+      "status_counts": {"needs_info": 0, "in_review": 1, "ready": 62},
+      "cost_notes": "all items cost $4.50 and retail at $14.99",
+      "held_back_item": {
+        "name": "White Fishnet Long-Sleeve Bodysuit (One Size)",
+        "reason": "unresolved_duplicates:3",
+        "duplicate_flags": 3
+      }
+    }
+  },
+  "mocked_api": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": [],
+    "note": "LLM calls use real Emergent Universal Key for GPT-5.2"
+  }
+}

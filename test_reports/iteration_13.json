@@ -1,0 +1,133 @@
+{
+  "summary": "Product Intake Minion module testing complete. Backend: 35/35 tests passed (100%). Frontend: All core flows working - dashboard, session creation, workspace, manual item add, text extraction (LLM), item detail panel, edit form, status transitions, missing fields indicator. All APIs including LLM calls are REAL (not mocked).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Intake Dashboard", "issues": ["Stats cards show briefly as 'Loading sessions...' before data loads - minor timing issue"]}
+    ]
+  },
+  "passed_tests": [
+    "Auth: All intake endpoints require authentication (401 without token)",
+    "Stats: GET /api/intake/stats returns total_sessions, total_items, by_status, ready_count, needs_info_count, in_review_count, stuck_count",
+    "Session CRUD: POST /api/intake/sessions creates session with correct structure",
+    "Session CRUD: GET /api/intake/sessions returns list of sessions",
+    "Session CRUD: GET /api/intake/sessions/{id} returns session with items",
+    "Session CRUD: PUT /api/intake/sessions/{id} updates session fields",
+    "Session CRUD: DELETE /api/intake/sessions/{id} deletes session and all items (cascade)",
+    "Session Validation: Source store is required",
+    "Item CRUD: POST /api/intake/sessions/{id}/items creates item manually",
+    "Item CRUD: GET /api/intake/items/{id} returns item with missing_fields",
+    "Item CRUD: PUT /api/intake/items/{id} updates item fields",
+    "Item CRUD: DELETE /api/intake/items/{id} deletes item",
+    "Suggested Price: Auto-calculated from unit_cost using pricing settings (2.5x markup, $9.99 min, nearest_99 rounding)",
+    "Status Transitions: needs_info -> in_review works",
+    "Status Transitions: in_review -> ready blocked when required fields missing",
+    "Status Transitions: ready allowed when all required fields filled",
+    "Status Transitions: Can move back to needs_info from any status",
+    "Status Validation: Invalid status returns 400",
+    "Missing Fields: Computed correctly for items (clean_title, quantity, unit_cost, currency, suggested_price, short_description, long_description, category)",
+    "Text Extraction: POST /api/intake/sessions/{id}/extract validates minimum text length (10 chars)",
+    "Text Extraction: Invalid source_type returns 400",
+    "Text Extraction: REAL LLM call extracts items from order text (GPT-5.2)",
+    "Listing Generation: POST /api/intake/items/{id}/generate requires title",
+    "Listing Generation: REAL LLM call generates clean_title, short_description, long_description, category_suggestions, tag_suggestions",
+    "Batch Generation: POST /api/intake/sessions/{id}/generate-all generates listings for items without content",
+    "CSV Export: GET /api/intake/sessions/{id}/export fails when no Ready items",
+    "CSV Export: Returns CSV with correct headers when Ready items exist",
+    "CSV Export: include_non_ready=true exports all items",
+    "Pricing Settings: GET /api/intake/settings returns default settings (auto-initialized)",
+    "Pricing Settings: PUT /api/intake/settings updates markup, min_price, rounding_rule",
+    "Pricing Settings: Validates rounding_rule, markup >= 1, min_price >= 0",
+    "Frontend: Navigation has Product Intake section in sidebar",
+    "Frontend: Dashboard loads at /intake with stats cards",
+    "Frontend: New Session modal has store presets (Temu, SHEIN, AliExpress, Amazon, Other)",
+    "Frontend: Session workspace shows action bar (Paste & Extract, Add Manually, Generate All, Export CSV, Delete)",
+    "Frontend: Manual item add modal works with all fields",
+    "Frontend: Items table shows status pills, prices, missing field indicators",
+    "Frontend: Item detail panel opens on click with full fields",
+    "Frontend: Edit form works with save/cancel",
+    "Frontend: Status transition buttons work (Move to Review, Mark Ready, Back to Needs Info)",
+    "Frontend: Missing fields indicator visible for incomplete items",
+    "Frontend: Paste & Extract modal with source type selection",
+    "Frontend: Text extraction (LLM) works and shows extracted items",
+    "Frontend: Search filter on dashboard works"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_product_intake.py",
+    "/app/test_reports/pytest/pytest_product_intake.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_product_intake.py"
+  ],
+  "success_rate": {
+    "backend": "100% (35/35 tests passed)",
+    "frontend": "100% (all UI flows working)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "Test sessions and items created during testing (prefixed with TEST_)",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Product Intake Minion fully tested. All CRUD operations, text extraction (LLM), listing generation (LLM), status transitions, missing fields validation, CSV export, and pricing settings working. LLM calls are REAL (GPT-5.2 via Emergent LLM key) and take 15-30 seconds. Known data state: Multiple test sessions exist with items in various statuses.",
+  "verified_features": {
+    "session_crud": {
+      "create": "Working - returns session with id, source_store, order_id, counts",
+      "list": "Working - returns sessions sorted by created_at desc",
+      "get": "Working - returns session with items array",
+      "update": "Working - updates fields and updated_at",
+      "delete": "Working - cascades to delete all items"
+    },
+    "item_crud": {
+      "create": "Working - manual entry with auto-calculated suggested_price",
+      "get": "Working - returns item with missing_fields computed",
+      "update": "Working - updates fields, validates status transitions",
+      "delete": "Working - updates session counts"
+    },
+    "text_extraction": {
+      "endpoint": "POST /api/intake/sessions/{id}/extract",
+      "llm": "REAL GPT-5.2 call via Emergent LLM key",
+      "timeout": "15-30 seconds typical",
+      "result": "Returns extracted_count and items array"
+    },
+    "listing_generation": {
+      "endpoint": "POST /api/intake/items/{id}/generate",
+      "llm": "REAL GPT-5.2 call via Emergent LLM key",
+      "timeout": "15-30 seconds typical",
+      "result": "Updates clean_title, short_description, long_description, category_suggestions, tag_suggestions"
+    },
+    "batch_generation": {
+      "endpoint": "POST /api/intake/sessions/{id}/generate-all",
+      "behavior": "Generates listings for items without short_description"
+    },
+    "status_workflow": {
+      "states": ["needs_info", "in_review", "ready"],
+      "validation": "Ready status requires all required fields filled",
+      "required_fields": ["clean_title", "quantity", "unit_cost", "currency", "suggested_price", "short_description", "long_description", "category"]
+    },
+    "csv_export": {
+      "endpoint": "GET /api/intake/sessions/{id}/export",
+      "default": "Only exports Ready items",
+      "option": "include_non_ready=true exports all items"
+    },
+    "pricing_settings": {
+      "endpoint": "GET/PUT /api/intake/settings",
+      "defaults": "2.5x markup, $9.99 min, nearest_99 rounding",
+      "auto_init": "Settings auto-initialized on first access"
+    },
+    "frontend": {
+      "dashboard": "Working - stats cards, search filter, session list",
+      "new_session_modal": "Working - store presets, order ID, date, notes",
+      "workspace": "Working - action bar, items table, detail panel",
+      "manual_add": "Working - all form fields",
+      "text_extraction": "Working - source type selection, text input, LLM extraction",
+      "item_detail": "Working - status buttons, edit form, missing fields indicator",
+      "navigation": "Working - Product Intake section in sidebar"
+    }
+  }
+}

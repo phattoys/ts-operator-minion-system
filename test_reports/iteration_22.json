@@ -1,0 +1,111 @@
+{
+  "summary": "Mark Ready & Export feature testing complete. Backend: 23/23 tests passed (100%). Frontend: All UI elements verified. 62 items marked ready, 1 held back (White Fishnet Bodysuit with 3+ duplicate flags). WooCommerce CSV export has 62 rows, all Published=0 (draft mode). Meta fields preserved (_source_title, _source_sku, _unit_cost, _vendor, _confidence).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: Session exists with correct counts (63 items: 62 ready, 1 in_review)",
+    "Backend: 62 items in 'ready' status",
+    "Backend: 1 item held back in 'in_review' status (White Fishnet Bodysuit)",
+    "Backend: Held-back item has 3+ duplicate flags (reason for being held back)",
+    "Backend: GET /api/intake/sessions/{session_id}/export-woo returns CSV",
+    "Backend: export-woo has Content-Disposition header for download",
+    "Backend: CSV has all 24 WooCommerce columns",
+    "Backend: CSV has 62 data rows (ready items only)",
+    "Backend: All items have Published=0 (draft mode, never auto-publish)",
+    "Backend: Meta fields present (_source_title, _source_sku, _unit_cost, _vendor, _confidence)",
+    "Backend: export-woo requires authentication (401)",
+    "Backend: export-woo returns 404 for nonexistent session",
+    "Backend: mark-ready-export handles no in_review items correctly",
+    "Backend: mark-ready-export requires authentication (401)",
+    "Backend: mark-ready-export returns 404 for nonexistent session",
+    "Backend: Held-back item has unresolved_duplicates (3+ flags)",
+    "Backend: All ready items have required fields (clean_title, short_description, category, price)",
+    "Backend: All ready items have confidence >= 0.4",
+    "Backend: CSV Type column is 'simple' for all items",
+    "Backend: CSV has SKU values for 90%+ items",
+    "Backend: CSV has Regular price for all items",
+    "Backend: CSV has Categories for all items",
+    "Backend: CSV confidence values are valid floats 0-1",
+    "Frontend: Login works with password TSFounder!Vault2026#Secure",
+    "Frontend: Mark Ready & Export button visible with emerald styling",
+    "Frontend: Status summary shows 'Needs Info: 0 | In Review: 1 | Ready: 62'",
+    "Frontend: Items table shows 63 item rows",
+    "Frontend: All action buttons present (Paste & Extract, Add Manually, Upload CSV/TSV, Upload PDF, Generate All Listings, Export CSV)",
+    "Frontend: Held-back item 'White Fishnet Long-Sleeve Bodysuit' shows 'In Review' status",
+    "Frontend: Held-back item shows DUP badge",
+    "Frontend: Item detail panel opens on click",
+    "Frontend: Detail panel shows Generation Confidence (86%) with breakdown",
+    "Frontend: Detail panel shows Attribute Suggestions (sku, vendor, material, color, size, style, type)",
+    "Frontend: Detail panel shows Potential Duplicates section with 3 similar items and match percentages"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_mark_ready_export.py",
+    "/app/test_reports/pytest/pytest_mark_ready_export.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_mark_ready_export.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "No new data created - verified existing SHEIN session with 63 items (62 ready, 1 held back)",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Mark Ready & Export feature fully tested. Key endpoints: POST /api/intake/sessions/{session_id}/mark-ready-export (validates in_review items, marks eligible as ready, returns CSV), GET /api/intake/sessions/{session_id}/export-woo (downloads WooCommerce CSV). Validation rules: (1) missing fields (clean_title, short_description, category, price), (2) confidence < 0.4, (3) 3+ unresolved duplicate_flags. WooCommerce CSV has 24 columns, Published=0 always. SHEIN session e54de4dc-5308-4b63-b1e1-f9af5f7d3225 has 63 items: 62 ready, 1 held back (White Fishnet Bodysuit with 3 duplicate flags).",
+  "verified_features": {
+    "mark_ready_export_endpoint": {
+      "url": "POST /api/intake/sessions/{session_id}/mark-ready-export",
+      "response_fields": ["marked_ready", "held_back", "total_processed", "held_back_items", "csv_data", "csv_filename"],
+      "validation_rules": {
+        "missing_fields": "clean_title, short_description, category, price",
+        "low_confidence": "score < 0.4",
+        "unresolved_duplicates": "3+ duplicate_flags"
+      },
+      "status_transition": "in_review -> ready (if valid)"
+    },
+    "export_woo_endpoint": {
+      "url": "GET /api/intake/sessions/{session_id}/export-woo",
+      "response_type": "text/csv",
+      "content_disposition": "attachment; filename=woo-import-{store}-{date}.csv",
+      "exports_only": "ready status items"
+    },
+    "woocommerce_csv_format": {
+      "columns": 24,
+      "column_list": ["Name", "Type", "SKU", "Published", "Is featured?", "Short description", "Description", "Regular price", "Sale price", "Categories", "Tags", "Images", "Attribute 1 name", "Attribute 1 value(s)", "Attribute 2 name", "Attribute 2 value(s)", "Attribute 3 name", "Attribute 3 value(s)", "Stock", "Meta: _source_title", "Meta: _source_sku", "Meta: _unit_cost", "Meta: _vendor", "Meta: _confidence"],
+      "published_value": "0 (always draft, never auto-publish)",
+      "type_value": "simple"
+    },
+    "frontend_ui": {
+      "mark_ready_export_btn": "[data-testid='mark-ready-export-btn'] - emerald/green styling",
+      "export_result_banner": "[data-testid='export-result-banner'] - shows after export with counts",
+      "download_woo_csv_btn": "[data-testid='download-woo-csv-btn'] - appears in export result banner",
+      "held_back_items_details": "Expandable section showing held-back items with reasons"
+    },
+    "shein_session": {
+      "id": "e54de4dc-5308-4b63-b1e1-f9af5f7d3225",
+      "source_store": "SHEIN",
+      "item_count": 63,
+      "status_counts": {"needs_info": 0, "in_review": 1, "ready": 62},
+      "held_back_item": {
+        "name": "White Fishnet Long-Sleeve Bodysuit (One Size)",
+        "reason": "unresolved_duplicates:3",
+        "duplicate_flags": 3
+      }
+    }
+  },
+  "mocked_api": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

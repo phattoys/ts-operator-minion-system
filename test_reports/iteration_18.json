@@ -1,0 +1,108 @@
+{
+  "summary": "Product Intake v2.5 testing complete. Backend: 21/21 tests passed (100%). Frontend: All new UI elements working correctly. CSV/TSV upload, duplicate-awareness flags, and attribute suggestions features verified. WP Placement regression passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: POST /api/intake/sessions/{session_id}/upload-csv - CSV file upload with product rows returns parsed items",
+    "Backend: POST /api/intake/sessions/{session_id}/upload-csv - TSV file upload works (tab-separated)",
+    "Backend: POST /api/intake/sessions/{session_id}/upload-csv - rejects non-CSV files (PDF, etc.)",
+    "Backend: POST /api/intake/sessions/{session_id}/upload-csv - handles various column names (product/name/title, price/cost, qty/quantity, colour/color)",
+    "Backend: POST /api/intake/sessions/{session_id}/upload-csv - rejects empty files",
+    "Backend: POST /api/intake/sessions/{session_id}/upload-csv - rejects CSV with no valid product rows",
+    "Backend: POST /api/intake/sessions/{session_id}/upload-csv - returns 404 for nonexistent session",
+    "Backend: GET /api/intake/items/{item_id}/check-duplicates - returns duplicate_flags array",
+    "Backend: GET /api/intake/items/{item_id}/check-duplicates - saves flags to item",
+    "Backend: GET /api/intake/items/{item_id}/check-duplicates - returns 404 for nonexistent item",
+    "Backend: Duplicate detection finds similar draft items (title matching)",
+    "Backend: POST /api/intake/items/{item_id}/generate - returns attribute_suggestions in response",
+    "Backend: POST /api/intake/items/{item_id}/generate - fills color/size/style from attribute_suggestions if empty",
+    "Backend: Existing CSV session (46caf1a7-3578-477e-ac19-849dbb5f8c11) verified",
+    "Backend: WP Placement regression - templates endpoint returns 3 templates",
+    "Backend: WP Placement regression - stats endpoint works",
+    "Backend: WP Placement regression - placement log endpoint works",
+    "Backend: WP Placement regression - drafts endpoint works",
+    "Frontend: IntakeSession shows 'Upload CSV/TSV' button in action bar",
+    "Frontend: IntakeSession shows 'Paste & Extract' button in action bar",
+    "Frontend: IntakeSession shows 'Add Manually' button in action bar",
+    "Frontend: Item detail panel shows 'Check Dupes' button",
+    "Frontend: Item detail panel shows 'Regenerate' button for AI generation",
+    "Frontend: Item detail panel shows 'Edit' button",
+    "Frontend: Item detail panel shows status buttons (Needs Info, Move to Review)",
+    "Frontend: Item detail panel shows Missing Required Fields indicator",
+    "Frontend: Item detail panel shows all item fields (clean title, source title, short description, category, cost, suggested price, qty, color, size, style)",
+    "Frontend: csv_upload source type available in session creation (verified in SOURCE_TYPES array)",
+    "Frontend: WP Placement regression - workspace loads with stats, tabs, form",
+    "Frontend: WP Placement regression - Placement Log tab shows history with CREATE/UPDATE badges",
+    "Frontend: WP Placement regression - Drafts tab shows drafts list",
+    "Frontend: WP Placement regression - Settings tab shows toggles and WP connection info"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_intake_v25.py",
+    "/app/test_reports/pytest/pytest_intake_v25.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_intake_v25.py"
+  ],
+  "success_rate": {
+    "backend": "100% (21/21 tests passed)",
+    "frontend": "100% (all UI elements working)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "Test sessions and items created during testing (prefixed with TEST) - cleaned up after tests",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Product Intake v2.5 features fully tested. CSV/TSV upload endpoint at POST /api/intake/sessions/{session_id}/upload-csv accepts multipart/form-data with 'file' field. Parser auto-detects delimiter (comma vs tab) and maps common column names. Duplicate check endpoint at GET /api/intake/items/{item_id}/check-duplicates returns duplicate_flags array and saves to item. Generate endpoint returns attribute_suggestions and fills color/size/style from suggestions if empty. Frontend has Upload CSV/TSV button, Check Dupes button in detail panel, and shows attribute_suggestions and duplicate_flags sections when present. WP Placement module unchanged and working (MOCKED WordPress REST API).",
+  "verified_features": {
+    "csv_upload": {
+      "endpoint": "POST /api/intake/sessions/{session_id}/upload-csv",
+      "method": "multipart/form-data with 'file' field",
+      "supported_formats": ["CSV", "TSV", "TXT"],
+      "column_mapping": {
+        "product/name/title/item/description": "source_title",
+        "price/cost/unit price/amount/each": "unit_cost",
+        "qty/quantity/count": "quantity",
+        "color/colour": "color",
+        "size": "size",
+        "style/variant": "style",
+        "sku/item number/item #": "sku",
+        "url/link": "source_url",
+        "notes/note": "notes",
+        "brand": "brand",
+        "material": "material"
+      },
+      "response": "uploaded_count, filename, items array with source_type=csv_upload"
+    },
+    "duplicate_check": {
+      "endpoint": "GET /api/intake/items/{item_id}/check-duplicates",
+      "response": "item_id, duplicate_flags array, count",
+      "flag_types": ["catalog_sku_match", "catalog_title_match", "draft_title_match"],
+      "saves_to_item": true
+    },
+    "attribute_suggestions": {
+      "endpoint": "POST /api/intake/items/{item_id}/generate",
+      "response_includes": "attribute_suggestions object with material, color, size, style, type",
+      "auto_fills": "color, size, style from suggestions if item fields are empty"
+    },
+    "frontend_ui": {
+      "upload_csv_btn": "[data-testid='upload-csv-btn']",
+      "check_dupes_btn": "[data-testid='check-duplicates-btn']",
+      "attribute_suggestions_section": "[data-testid='attribute-suggestions']",
+      "duplicate_flags_section": "[data-testid='duplicate-flags']",
+      "dup_badge": "DUP badge on items with duplicate_flags"
+    }
+  },
+  "mocked_api": {
+    "WordPress REST API": "MOCKED - wp_client.py uses MongoDB-backed mock instead of real WP API calls",
+    "mock_collection": "wp_mock_pages",
+    "to_enable_live": "Set WP_SITE_URL, WP_USERNAME, WP_APP_PASSWORD in backend/.env"
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "summary": "Completed comprehensive testing of Phase 2: Custom House Templates from Winning Pages. All 20 backend API tests passed (100%). All frontend UI features working correctly including House Templates page, PageWorkspace template integration, and navigation.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/house-templates/family/{family}",
+        "issue": "URL routing issue with families containing '/' (e.g., 'Media/Asset', 'FAQ/Support') - returns 404 instead of empty list",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "GET /api/house-templates - returns all templates with by_family grouping",
+    "GET /api/house-templates?family=Core Hub - filters templates by family",
+    "GET /api/house-templates?status=active - filters templates by status",
+    "GET /api/house-templates/family/{family} - returns active templates for a family with primary",
+    "GET /api/house-templates/family/District - returns empty list for family without templates",
+    "GET /api/house-templates/{id} - returns single template with all required fields",
+    "GET /api/house-templates/nonexistent - returns 404 for nonexistent template",
+    "POST /api/house-templates - creates template from version with structural_pattern, tone_guidance, purpose",
+    "POST /api/house-templates - returns 404 for invalid source version",
+    "PUT /api/house-templates/{id} - updates template fields (name, purpose, tone, structure)",
+    "PUT /api/house-templates/{id} - updates template status (active/inactive)",
+    "PUT /api/house-templates/{id} - rejects invalid status values",
+    "POST /api/house-templates/{id}/set-primary - sets as primary for family (unsets others)",
+    "POST /api/house-templates/{id}/toggle-status - toggles active/inactive",
+    "POST /api/house-templates/extract-structure - extracts markdown structure from a version",
+    "POST /api/house-templates/extract-structure - returns 404 for invalid version",
+    "POST /api/pages/{page_id}/generate - accepts use_house_template and template_id fields",
+    "DELETE /api/house-templates/{id} - removes template",
+    "DELETE /api/house-templates/nonexistent - returns 404",
+    "Existing template 'Core Hub Warmth Pattern' integrity verified",
+    "House Templates page loads at /templates route",
+    "Navigation sidebar shows Templates link",
+    "Family summary grid shows 8 family cards with counts and primary indicators",
+    "Template cards display with expand/collapse working",
+    "Template expanded view shows Purpose, Tone Guidance, Structural Pattern",
+    "Template action buttons: Edit, Deactivate, Delete, View Source Page",
+    "Family filter click and clear working",
+    "Template edit mode with all form fields (name, purpose, tone, structure)",
+    "Template edit Save/Cancel buttons working",
+    "PageWorkspace: Template toggle in generate controls shows when family has primary template",
+    "PageWorkspace: Template toggle checkbox ON by default",
+    "PageWorkspace: Active Template indicator in sidebar",
+    "PageWorkspace: Create Template button appears in version history for versions with score >= 70",
+    "PageWorkspace: Template creation form with auto-extracted structure"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_house_templates.py",
+    "/app/test_reports/pytest/pytest_house_templates.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_house_templates.py"
+  ],
+  "success_rate": {
+    "backend": "100% (20/20 tests passed)",
+    "frontend": "100% (all UI elements and flows working)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "One template exists: 'Core Hub Warmth Pattern' (Core Hub, Primary, active) created from Homepage v1 with score 88",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 House Templates fully functional. One template 'Core Hub Warmth Pattern' exists as primary for Core Hub family. Template CRUD, structure extraction, and generation integration all working. PageWorkspace shows template toggle when family has primary template. Create Template button appears for versions with score >= 70.",
+  "verified_features": {
+    "house_template_endpoints": {
+      "GET /api/house-templates": "Working - returns templates with by_family grouping",
+      "GET /api/house-templates?family=X": "Working - filters by family",
+      "GET /api/house-templates?status=X": "Working - filters by status",
+      "GET /api/house-templates/family/{family}": "Working - returns active templates with primary",
+      "GET /api/house-templates/{id}": "Working - returns single template",
+      "POST /api/house-templates": "Working - creates template from version",
+      "PUT /api/house-templates/{id}": "Working - updates template fields",
+      "DELETE /api/house-templates/{id}": "Working - removes template",
+      "POST /api/house-templates/{id}/set-primary": "Working - sets primary for family",
+      "POST /api/house-templates/{id}/toggle-status": "Working - toggles active/inactive",
+      "POST /api/house-templates/extract-structure": "Working - extracts markdown structure"
+    },
+    "house_templates_page_ui": {
+      "page_route": "/templates - Working",
+      "navigation_link": "Present in sidebar - Working",
+      "family_summary_grid": "8 family cards with counts and primary indicators - Working",
+      "template_cards": "Display with expand/collapse - Working",
+      "template_details": "Purpose, Tone Guidance, Structural Pattern - Working",
+      "template_actions": "Edit, Deactivate, Delete, View Source Page - Working",
+      "family_filter": "Click to filter, clear button - Working",
+      "edit_mode": "All form fields editable with Save/Cancel - Working"
+    },
+    "page_workspace_template_features": {
+      "template_toggle_section": "Shows when family has primary template - Working",
+      "use_template_toggle": "Checkbox ON by default - Working",
+      "active_template_indicator": "Shows in sidebar with template name - Working",
+      "create_template_button": "Shows for versions with score >= 70 - Working",
+      "template_creation_form": "Name, Purpose, Tone, Structure (auto-extracted), Primary checkbox - Working"
+    },
+    "generation_with_template": {
+      "use_house_template_field": "Accepted in generate request",
+      "template_id_field": "Accepted in generate request"
+    }
+  }
+}

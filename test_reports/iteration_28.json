@@ -1,0 +1,89 @@
+{
+  "summary": "Field-to-Listing Photo-First UI and Execution Spine v1 testing complete. Backend: 55/55 tests passed (100%). Frontend: All photo-first UI features verified working correctly. The batch workspace shows big 'Upload Product Photos' dropzone when 0 items exist, batch notes editable inline below, and action bar only appears after photos are uploaded.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: Field-to-Listing - 29/29 tests passed (stats, batch CRUD, photo upload, pricing parser, item update, bulk actions, analyze/generate endpoints, job polling)",
+    "Backend: Execution Spine - 26/26 tests passed (dashboard, sync, tasks, status update, execute, log, status normalization, routing rules)",
+    "Frontend: Field-to-Listing dashboard title says 'Field-to-Listing'",
+    "Frontend: Dashboard description says 'Upload phone photos + grouped notes → listing-ready records + marketplace packs'",
+    "Frontend: 'New Photo Batch' button visible and correctly labeled",
+    "Frontend: Creating new batch navigates to batch workspace (/field-listing/{batch_id})",
+    "Frontend: Batch workspace with 0 items shows big 'Upload Product Photos' dropzone (data-testid='photo-dropzone')",
+    "Frontend: Batch notes section visible below dropzone with Source/Vendor, Grouped Pricing, Category/Type Hint, Condition/Pickup Note fields",
+    "Frontend: Action bar is HIDDEN when batch has 0 items (photo-first UX)",
+    "Frontend: After uploading photo, action bar appears with 'Add More Photos', 'Analyze Photos', 'Generate Listings', 'Generate Packs'",
+    "Frontend: Photo dropzone hidden after upload (replaced by action bar)",
+    "Frontend: Pricing bar visible with grouped pricing note and 'Apply All' button",
+    "Frontend: Items table shows uploaded image with 'Pending analysis...' status",
+    "Frontend: Execution Spine dashboard loads with status summary (TOTAL, NEEDS ACTION, IN PROGRESS, READY, COMPLETED, HELD BACK)",
+    "Frontend: Module health cards for Page Ops (25 items), Product Intake (6 items), Field-to-Listing (3 items)",
+    "Frontend: Ready to Execute section shows 3 pages with 'Place in WordPress' action buttons",
+    "Frontend: Needs Your Action section shows 33 items with status badges",
+    "Frontend: Sync button visible and functional",
+    "Frontend: Execution Log section visible"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_field_listing.py",
+    "/app/backend/tests/test_execution_spine.py",
+    "/app/test_reports/pytest/pytest_field_listing_v28.xml",
+    "/app/test_reports/pytest/pytest_execution_spine_v28.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (55/55 tests passed - 29 field-listing + 26 execution-spine)",
+    "frontend": "100% (all photo-first UI features verified)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "Created and deleted TEST_Photo_First_Batch for testing photo upload flow",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Field-to-Listing Photo-First UI fully tested. Key features: (1) Dashboard at /field-listing shows 'New Photo Batch' button. (2) Creating batch navigates to /field-listing/{batch_id}. (3) Batch workspace with 0 items shows big dropzone (data-testid='photo-dropzone') with 'Upload Product Photos' text. (4) Batch notes section below dropzone has Source/Vendor, Grouped Pricing, Category/Type Hint, Condition/Pickup Note fields. (5) Action bar (data-testid='action-bar') is HIDDEN when 0 items. (6) After photo upload, action bar appears with 'Add More Photos', 'Analyze Photos (N pending)', 'Generate Listings', 'Generate Packs'. (7) Dropzone hidden after upload. Execution Spine at /spine shows all 3 modules synced with proper status counts and routing rules.",
+  "verified_features": {
+    "field_listing_photo_first_ui": {
+      "dashboard": {
+        "title": "Field-to-Listing",
+        "description": "Upload phone photos + grouped notes → listing-ready records + marketplace packs",
+        "new_batch_button": "New Photo Batch"
+      },
+      "batch_workspace_empty": {
+        "dropzone_visible": true,
+        "dropzone_testid": "photo-dropzone",
+        "dropzone_text": "Upload Product Photos",
+        "batch_notes_visible": true,
+        "batch_notes_fields": ["Source/Vendor", "Grouped Pricing", "Category/Type Hint", "Condition/Pickup Note"],
+        "action_bar_visible": false
+      },
+      "batch_workspace_with_items": {
+        "dropzone_visible": false,
+        "action_bar_visible": true,
+        "action_bar_testid": "action-bar",
+        "action_bar_buttons": ["Add More Photos", "Analyze Photos", "Generate Listings", "Generate Packs"],
+        "pricing_bar_visible": true,
+        "items_table_visible": true
+      }
+    },
+    "execution_spine": {
+      "dashboard_url": "/spine",
+      "status_summary": ["TOTAL", "NEEDS ACTION", "IN PROGRESS", "READY", "COMPLETED", "HELD BACK"],
+      "module_health_cards": ["page_ops", "product_intake", "field_listing"],
+      "ready_section": "Shows items with executable actions",
+      "sync_button": "data-testid='sync-btn'",
+      "execution_log": "data-testid='execution-log'"
+    }
+  },
+  "mocked_api": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": [],
+    "note": "All APIs are real. WP Placement uses real WordPress API - DO NOT test execute on ready pages"
+  }
+}

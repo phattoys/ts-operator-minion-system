@@ -1,0 +1,100 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 4 (Swiss & High-Contrast)",
+  "project_name": "TS Operator Minion v1",
+  "design_philosophy": "Internal power tool optimized for speed, clarity, low friction, founder usability. Terminal-inspired dark-first, zero-clutter, strong typography. Color is function, not decoration.",
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "IBM Plex Mono",
+    "rules": {
+      "h1": "text-4xl tracking-tight font-light",
+      "h2": "text-2xl tracking-tight font-medium",
+      "h3": "text-xl tracking-tight font-medium",
+      "h4": "text-lg tracking-tight font-medium",
+      "body": "text-sm leading-relaxed",
+      "labels": "text-xs tracking-[0.2em] uppercase font-bold text-zinc-500",
+      "data_numbers": "font-mono text-sm tracking-tight"
+    },
+    "imports": "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap');"
+  },
+  "colors": {
+    "background": {
+      "default": "#09090B",
+      "surface": "transparent",
+      "surface_hover": "#18181B",
+      "surface_active": "#27272A"
+    },
+    "border": {
+      "default": "#27272A",
+      "focus": "#52525B"
+    },
+    "text": {
+      "primary": "#FAFAFA",
+      "secondary": "#A1A1AA",
+      "muted": "#71717A"
+    },
+    "action": {
+      "primary_bg": "#FAFAFA",
+      "primary_text": "#09090B",
+      "primary_hover": "#E4E4E7",
+      "secondary_bg": "transparent",
+      "secondary_border": "#27272A",
+      "secondary_text": "#FAFAFA",
+      "secondary_hover": "#18181B"
+    },
+    "status": {
+      "approve": "#34C759",
+      "review": "#FFCC00",
+      "rewrite": "#FF3B30",
+      "defer": "#8E8E93"
+    }
+  },
+  "layout": {
+    "strategy": "The 'Control Room' Grid",
+    "spacing": {
+      "container": "p-6 md:p-8",
+      "gap": "gap-4 md:gap-6",
+      "section": "py-12"
+    },
+    "geometry": {
+      "radius": "rounded-none",
+      "border_width": "border"
+    },
+    "surface_styles": {
+      "cards": "border border-zinc-800 bg-transparent rounded-none",
+      "header": "bg-[#09090B] border-b border-zinc-800 z-50",
+      "sidebar": "border-r border-zinc-800 bg-[#09090B]"
+    }
+  },
+  "components": {
+    "buttons": "Use flat styles. No shadows. Primary button is solid white (text black). Secondary is outline with transparent background. Mandatory data-testid attributes.",
+    "inputs": "Flat borders (border-zinc-800), transparent backgrounds. Focus ring should be sharp (ring-1 ring-zinc-500) rather than blurred.",
+    "tables": "Dense. border-collapse. Subdued headers using uppercase tracking-[0.2em] text-xs. Data cells use IBM Plex Mono.",
+    "badges": "Sharp corners. 1px border. Background transparent or 10% opacity of the status color.",
+    "dialogs": "Solid background #09090B, 1px border-zinc-800, no drop shadows."
+  },
+  "motion": {
+    "hover": "Fast, mechanical transitions. No bounciness.",
+    "classes": "transition-colors duration-150 ease-linear"
+  },
+  "media": {
+    "image_urls": [],
+    "strategy": "No decorative imagery. Interface relies solely on typographic hierarchy, grid lines, and functional color coding. Icons should be Lucide (default)."
+  },
+  "accessibility": {
+    "contrast": "Ensure minimum 4.5:1 for standard text. Muted text must still be readable against #09090B.",
+    "focus": "All interactive elements must have a visible focus state (e.g., focus:ring-1 focus:ring-white).",
+    "testing": "All interactive elements MUST include a data-testid attribute in kebab-case."
+  },
+  "instructions_to_main_agent": [
+    "Set the Tailwind config to use 'Outfit' for sans/headings and 'IBM Plex Mono' for mono/body data.",
+    "Implement the 'Control Room' grid: dense, data-driven, using grid-cols-1 md:grid-cols-3 lg:grid-cols-4 with tight gaps.",
+    "Do not use Shadcn 'Card' components if they force rounded corners and shadows. Use custom <div> with 'border border-zinc-800 bg-transparent'.",
+    "Apply data-testid to ALL interactive elements (buttons, inputs, tabs, list items) to facilitate testing.",
+    "Color is strictly reserved for statuses (Approve/Review/Rewrite/Defer). The rest of the UI must remain monochrome (Zinc 950 to White).",
+    "For the Page Workspace, use a split-pane layout (sidebar for controls/scoring, main area for draft editing).",
+    "Ensure the Quality Scorer uses monospaced numbers for scores (e.g., 85/100) for a technical feel.",
+    "Use standard HTML tags and Tailwind for layouts. Avoid heavy UI libraries where simple grid/flex will suffice.",
+    "Use Lucide icons (already installed) consistently with 1.5px stroke width."
+  ]
+}

@@ -1,0 +1,196 @@
+{
+  "summary": {
+    "total_tests": 31,
+    "passed_tests": 30,
+    "success_rate": "96.8%",
+    "timestamp": "2026-04-02T06:53:40.288700"
+  },
+  "detailed_results": [
+    {
+      "test": "Login with correct password",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:31.904500"
+    },
+    {
+      "test": "Verify authentication",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:32.003445"
+    },
+    {
+      "test": "Logout",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:32.111764"
+    },
+    {
+      "test": "Re-login for testing",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:32.663611"
+    },
+    {
+      "test": "Get dashboard stats",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:32.761745"
+    },
+    {
+      "test": "Get all pages",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:32.877569"
+    },
+    {
+      "test": "Get recommended pages",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:32.992696"
+    },
+    {
+      "test": "Create new page",
+      "success": true,
+      "details": "Status: 201",
+      "timestamp": "2026-04-02T06:52:33.086555"
+    },
+    {
+      "test": "Get specific page",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:33.183020"
+    },
+    {
+      "test": "Update page",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:33.286836"
+    },
+    {
+      "test": "Generate page content",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:40.815578"
+    },
+    {
+      "test": "Score page content",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:49.162879"
+    },
+    {
+      "test": "Approve page",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:49.280483"
+    },
+    {
+      "test": "Send to rewrite",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:49.383652"
+    },
+    {
+      "test": "Defer page",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:49.479073"
+    },
+    {
+      "test": "Delete page",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:49.582428"
+    },
+    {
+      "test": "Get settings",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:49.677507"
+    },
+    {
+      "test": "Update settings",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:49.773093"
+    },
+    {
+      "test": "Get page families",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:49.866473"
+    },
+    {
+      "test": "Get page types",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:49.971752"
+    },
+    {
+      "test": "Get statuses",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:50.069033"
+    },
+    {
+      "test": "Get activity logs",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:50.183700"
+    },
+    {
+      "test": "Seed ecosystem data",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:50.279960"
+    },
+    {
+      "test": "Get brand voice configuration",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:50.377648"
+    },
+    {
+      "test": "Get dependency map",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:52:50.484338"
+    },
+    {
+      "test": "Batch generate pages",
+      "success": false,
+      "details": "Error: HTTPSConnectionPool(host='page-queue-hub.preview.emergentagent.com', port=443): Read timed out. (read timeout=30)",
+      "timestamp": "2026-04-02T06:53:20.557481"
+    },
+    {
+      "test": "Get pages for export test",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:53:39.835962"
+    },
+    {
+      "test": "Export single page (markdown)",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:53:39.957932"
+    },
+    {
+      "test": "Export single page (text)",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:53:40.058216"
+    },
+    {
+      "test": "Export single page (json)",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:53:40.194843"
+    },
+    {
+      "test": "Export all approved pages",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-04-02T06:53:40.287806"
+    }
+  ]
+}

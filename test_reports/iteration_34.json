@@ -1,0 +1,34 @@
+{
+  "summary": "Page-update workflow bug-fix verified end-to-end. 14/14 pytest cases pass in /app/backend/tests/test_page_update_workflow.py against the LIVE WordPress (temporarysatisfaction.com) and EMERGENT_LLM. Chain Jenny (wp_content_draft, auto) → Rene (wp_content_qa, auto) → WP Placement (wp_page_update, queued/founder-triggered) is fully wired. drafted_html is correctly persisted to Jenny's task context and propagated to Rene's task and onward to the WP Placement task (the previous context-loss bug is fixed). Executing the WP Placement task returns a full completion packet (wp_page_id, status_before, status_after, content_added_chars, insert_location, warnings) and uses update_page (not create_page) — no duplicate page is created. Page status (e.g., 'draft') is preserved (status_before == status_after). Jenny no longer silently 'task notes' unknown source_module tasks — they now resolve to needs_review with a reason. Validation: 404 for nonexistent page, 400 for missing wp_page_id, 400 for missing instructions. Regression: /api/worker-queue/stats, /api/worker-queue/tasks, and /api/worker-queue/views/* all healthy. Login with TSFounder!Vault2026#Secure succeeds and returns a bearer token.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/worker-queue/tasks?worker=wp_placement", "issue": "wp_placement listing returns mixed task types including legacy wp_draft. Not a defect, but consumers must filter by task_type to distinguish update vs create flows."},
+      {"endpoint": "services/worker_queue.py::_rene_qa_wp_content", "issue": "QA only checks length>=20 and presence of <script>. Could also check for empty H1/heading, unbalanced shortcodes, and minimum word count — current threshold may allow trivially short paragraphs through."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_page_update_workflow.py",
+    "/app/test_reports/pytest/pytest_page_update_workflow.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/worker_queue.py::_jenny_draft_wp_content correctly persists drafted_html via update_one with dot-path keys (context.drafted_html etc.) — this is what fixes the previous context-loss dead-end.",
+    "services/worker_queue.py::_route_next re-fetches the updated task from DB after Jenny completes (lines ~866-867) to ensure Rene's task receives the freshly-written drafted_html. This is the right pattern — earlier code reused the stale in-memory task dict.",
+    "_execute_wp_update preserves status by only sending the `content` field to update_page — it does NOT pass status, so WordPress retains the existing page status. Verified by test_execute_wp_update_returns_completion_packet (status_before == status_after).",
+    "_execute_wp_update correctly logs the placement record with mode='update' (not 'create'), so the wp_placements collection clearly distinguishes the two flows.",
+    "_execute_jenny now returns needs_review with a clear 'reason' for unhandled task types instead of returning an empty result — the previous 'task noted' dead-end is gone.",
+    "Insertion logic in _execute_wp_update handles insert_after/insert_before with [/section] / [section markers (Flatsome/UX Builder style). Falls back to 'append at end' with a warning when the marker is not found — good defensive behavior.",
+    "Validation in routes/command_center.py POST /page-update is solid (404 for missing page, 400 for missing wp_page_id, 400 for missing instructions). Order of checks is correct.",
+    "Side-effect: every test run inserts content into the live FAQ page (WP 354820) status='draft'. Founder should clean up the draft revisions in WordPress after testing — see seed_data_creation."
+  ],
+  "updated_files": ["/app/backend/tests/test_page_update_workflow.py (new — 14 tests, all passing)"],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "n/a (backend-only request)"},
+  "test_credentials": "Password: TSFounder!Vault2026#Secure (POST /api/auth/login → bearer token).",
+  "seed_data_creation": "Each run of TestPageUpdateWorkflow appends a 'TEST_PAGE_UPDATE_WORKFLOW_MARKER_DO_NOT_PUBLISH' section to the FAQ page (page_id a5263d92-42ab-4fbe-813c-186fffa9a793, WP 354820) via the live WP REST API. Page status is preserved (still draft). Cleanup: revert via WordPress revisions or delete the marker section. TestJennyUnknownSource also creates an execution_map document and one Jenny task (status=needs_review). Both are harmless residuals.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All page-update flows are verified at /app/backend/tests/test_page_update_workflow.py. To rerun: `pytest backend/tests/test_page_update_workflow.py -v` from /app. The test uses new_section_content (not update_instructions) for determinism, so it bypasses the LLM path; if you need to verify the LLM path, switch to update_instructions and allow longer timeouts (45-60s for Jenny). The FAQ page is the safe target — it's already placed and the bug-fix manual test used the Wellness District page (WP 354818). Stats currently: wp_placement worker has auto_execute=False (correct).",
+  "rca of the issue": "Original bug: Jenny logged 'Task noted' for unknown task types and dead-ended the chain because _execute_jenny had no branch for wp_content_draft, and _route_next reused a stale task dict where Jenny's drafted_html (written via dot-path update) was not in memory. Fixes verified in this iteration: (1) _jenny_draft_wp_content branch generates HTML via LLM or uses new_section_content, persists drafted_html to task.context via dot-path update; (2) _route_next re-fetches the task from DB before constructing Rene's task so drafted_html flows through; (3) _execute_rene branches on wp_content_qa and validates drafted content; (4) _execute_wp branches on wp_page_update to call update_page (not create_page), preserving status; (5) _execute_jenny default branch now returns needs_review with a 'reason' instead of silent success."
+}

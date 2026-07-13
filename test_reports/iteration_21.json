@@ -1,0 +1,121 @@
+{
+  "summary": "Batch Listing Generation Mode testing complete. Backend: 19/19 tests passed (100%). Frontend: All UI elements verified. All 63 SHEIN items are in 'in_review' status with generation_confidence, clean_title, short_description. Confidence badges show percentages on item rows. Detail panel shows confidence breakdown (title/category/description). Attribute suggestions preserve source data (sku, vendor, list_price) alongside LLM-generated attributes. Duplicate flags preserved.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: POST /api/intake/sessions/{session_id}/generate-all returns correct structure (generated/failed/flagged/total/results)",
+    "Backend: generate-all skips items with existing descriptions (returns 0 generated)",
+    "Backend: generate-all requires authentication (401)",
+    "Backend: generate-all returns 404 for nonexistent session",
+    "Backend: POST /api/intake/items/{item_id}/generate includes generation_confidence in response",
+    "Backend: generation_confidence has breakdown fields (title_confidence, category_confidence, description_confidence)",
+    "Backend: Single item generate requires authentication (401)",
+    "Backend: Single item generate returns 404 for nonexistent item",
+    "Backend: All 63 SHEIN items are in 'in_review' status (not 'ready')",
+    "Backend: Items not auto-published to 'ready' status after generation",
+    "Backend: attribute_suggestions preserves sku, vendor, list_price from PDF extraction",
+    "Backend: LLM-generated attributes (material, color, size, style, type) present",
+    "Backend: duplicate_flags preserved after generation (not overwritten)",
+    "Backend: All items have generation_confidence field",
+    "Backend: Confidence scores are between 0 and 1",
+    "Backend: Confidence breakdown fields present on all items",
+    "Backend: Source title (raw) preserved alongside clean title",
+    "Backend: All 63 items have clean_title and short_description",
+    "Backend: GET /api/intake/sessions/{session_id} returns items with generation_confidence",
+    "Frontend: Login works with password TSFounder!Vault2026#Secure",
+    "Frontend: Product Intake nav accessible in sidebar",
+    "Frontend: SHEIN session visible with '63 review' badge",
+    "Frontend: IntakeSession page loads with all action buttons",
+    "Frontend: 'Generate All Listings' button visible in action bar",
+    "Frontend: Status summary shows 'Needs Info: 0 | In Review: 63 | Ready: 0'",
+    "Frontend: Confidence badges (percentages) visible on item rows",
+    "Frontend: DUP badges visible on items with duplicate flags",
+    "Frontend: 'In Review' status badges on all items",
+    "Frontend: Item detail panel opens on click",
+    "Frontend: Detail panel shows Clean Title and Source Title (preserved)",
+    "Frontend: Detail panel shows Short Description and Long Description",
+    "Frontend: Detail panel shows Category, Tags, Cost, Suggested Price",
+    "Frontend: Generation Confidence section shows percentage (86%)",
+    "Frontend: Confidence breakdown shows Title: high, Category: high, Desc: medium",
+    "Frontend: Confidence reason text displayed when present",
+    "Frontend: Attribute Suggestions section shows sku, list_price, vendor, material, color, size, style, type",
+    "Frontend: Potential Duplicates section shows similar items with match percentages",
+    "Frontend: Extraction Evidence toggle visible",
+    "Frontend: Action buttons (In Review, Mark Ready, Back to Needs Info, Edit, Regenerate, Check Dupes) visible"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_batch_generation.py",
+    "/app/test_reports/pytest/pytest_batch_generation.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_batch_generation.py"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "No new data created - verified existing SHEIN session with 63 items",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Batch Listing Generation Mode fully tested. All 63 SHEIN items have been batch-generated and are in 'in_review' status. Key endpoints: POST /api/intake/sessions/{session_id}/generate-all (batch), POST /api/intake/items/{item_id}/generate (single). Response includes generation_confidence with score (0-1), title_confidence, category_confidence, description_confidence (high/medium/low), and reason. attribute_suggestions merges preserved fields (sku, vendor, list_price) with LLM-generated fields (material, color, size, style, type). duplicate_flags are never overwritten by generation. Frontend shows confidence badges on item rows and detailed breakdown in detail panel.",
+  "verified_features": {
+    "batch_generate_endpoint": {
+      "url": "POST /api/intake/sessions/{session_id}/generate-all",
+      "response_fields": ["message", "generated", "failed", "flagged", "total", "results"],
+      "results_item_fields": ["id", "source_title", "status", "clean_title", "confidence", "new_status", "category"],
+      "skips_items_with_descriptions": true,
+      "status_transition": "needs_info -> in_review (not ready)"
+    },
+    "single_item_generate_endpoint": {
+      "url": "POST /api/intake/items/{item_id}/generate",
+      "response_includes": "generation_confidence",
+      "regenerates_existing": true
+    },
+    "generation_confidence_structure": {
+      "score": "float 0-1",
+      "title_confidence": "high/medium/low",
+      "category_confidence": "high/medium/low",
+      "description_confidence": "high/medium/low",
+      "reason": "string (optional, explains low confidence)"
+    },
+    "attribute_preservation": {
+      "preserved_from_source": ["sku", "vendor", "list_price"],
+      "llm_generated": ["material", "color", "size", "style", "type"],
+      "merge_strategy": "existing fields preserved, new fields added"
+    },
+    "duplicate_flags": {
+      "preserved_after_generation": true,
+      "never_overwritten": true
+    },
+    "frontend_ui": {
+      "confidence_badges": "[data-testid='confidence-badge-{idx}'] - shows percentage on item rows",
+      "confidence_detail": "[data-testid='confidence-detail'] - shows breakdown in detail panel",
+      "attribute_suggestions": "[data-testid='attribute-suggestions'] - shows all attributes",
+      "duplicate_flags": "[data-testid='duplicate-flags'] - shows potential duplicates",
+      "batch_generate_btn": "[data-testid='batch-generate-btn'] - triggers batch generation",
+      "batch_result_banner": "[data-testid='batch-result-banner'] - shows after batch generation"
+    },
+    "shein_session": {
+      "id": "e54de4dc-5308-4b63-b1e1-f9af5f7d3225",
+      "source_store": "SHEIN",
+      "item_count": 63,
+      "status_counts": {"needs_info": 0, "in_review": 63, "ready": 0},
+      "all_items_have": ["clean_title", "short_description", "long_description", "category", "tags", "generation_confidence", "attribute_suggestions"]
+    }
+  },
+  "mocked_api": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": [],
+    "note": "LLM calls use real Emergent Universal Key for GPT-5.2"
+  }
+}

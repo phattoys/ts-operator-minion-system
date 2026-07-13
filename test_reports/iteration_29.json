@@ -1,0 +1,88 @@
+{
+  "summary": "Multi-Photo Item Grouping (Merge/Split/Suggest Groups) testing complete. Backend: 14/14 tests passed (100%). Frontend: All merge/split/suggest-groups UI features verified working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: Merge Items - merge_two_items_success (combines images, removes secondary item, updates batch item_count)",
+    "Backend: Merge Items - merge_requires_at_least_two_items (returns 400 with single item)",
+    "Backend: Merge Items - merge_nonexistent_item_fails (returns 404)",
+    "Backend: Merge Items - merge_nonexistent_batch_fails (returns 404)",
+    "Backend: Split Item - split_multi_image_item (creates new items, updates batch item_count)",
+    "Backend: Split Item - split_single_image_item_fails (returns 400)",
+    "Backend: Split Item - split_nonexistent_item_fails (returns 404)",
+    "Backend: Suggest Groups - suggest_groups_returns_structure (proper response format)",
+    "Backend: Suggest Groups - suggest_groups_with_similar_items (finds similar items)",
+    "Backend: Suggest Groups - suggest_groups_empty_with_different_items (returns empty for different products)",
+    "Backend: Suggest Groups - suggest_groups_not_enough_items (returns empty with <2 items)",
+    "Backend: Suggest Groups - suggest_groups_nonexistent_batch (returns 404)",
+    "Backend: Merged Item Fields - merged_item_has_merged_from_field (tracks source items)",
+    "Backend: Merged Item Fields - split_item_has_split_from_field (tracks source item)",
+    "Frontend: 'Suggest Groups' button visible in action bar (purple, data-testid='suggest-groups-btn')",
+    "Frontend: Selecting 2+ items shows bulk actions bar with 'Merge into 1 Item' button (data-testid='merge-btn')",
+    "Frontend: Merge combines images and reduces item count (2 items → 1 item)",
+    "Frontend: Merged item shows count badge on thumbnail indicating multiple images",
+    "Frontend: Expanded merged item shows multi-thumbnail grid display",
+    "Frontend: 'Split back into N items' button visible in expanded detail of multi-image items",
+    "Frontend: Split separates merged item back into individual items (1 item → 2 items)",
+    "Frontend: Suggest Groups shows purple banner with potential matches",
+    "Frontend: Suggested groups banner shows thumbnails, confidence %, Merge and Dismiss buttons",
+    "Frontend: Clicking Merge in suggested groups banner merges the items"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_merge_split_groups.py",
+    "/app/test_reports/pytest/pytest_merge_split_groups.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_merge_split_groups.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14 tests passed)",
+    "frontend": "100% (all merge/split/suggest-groups UI features verified)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "Created and deleted multiple TEST_ prefixed batches for merge/split testing",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Multi-Photo Item Grouping fully tested. Key features: (1) POST /api/field-listing/batches/{batch_id}/merge-items - merges 2+ items into 1, combines images, removes secondary items, updates batch item_count, adds merged_from field. (2) POST /api/field-listing/items/{item_id}/split - splits multi-image item back into separate items, updates batch item_count, adds split_from field. (3) POST /api/field-listing/batches/{batch_id}/suggest-groups - returns suggested groupings based on product_type and color similarity. Frontend: Bulk actions bar shows 'Merge into 1 Item' when 2+ items selected. Merged items show count badge and multi-thumbnail display. Split button visible in expanded detail. Suggest Groups button shows purple banner with potential matches, Merge/Dismiss buttons.",
+  "verified_features": {
+    "merge_items": {
+      "endpoint": "POST /api/field-listing/batches/{batch_id}/merge-items",
+      "request_body": {"item_ids": ["id1", "id2"]},
+      "response": {"merged_item": {}, "removed_count": 1, "total_images": 2},
+      "behavior": "Combines all images under primary item, deletes secondary items, updates batch item_count",
+      "tracking_field": "merged_from (array of source item IDs)"
+    },
+    "split_item": {
+      "endpoint": "POST /api/field-listing/items/{item_id}/split",
+      "response": {"original_id": "id", "new_items": [], "total_split": 2},
+      "behavior": "Keeps first image on original, creates new items for remaining images, updates batch item_count",
+      "tracking_field": "split_from (source item ID)"
+    },
+    "suggest_groups": {
+      "endpoint": "POST /api/field-listing/batches/{batch_id}/suggest-groups",
+      "response": {"suggestions": [], "total_items": 11, "suggested_merges": 1, "message": "Found 1 potential groupings"},
+      "behavior": "Analyzes items by product_type and color similarity, returns conservative suggestions"
+    },
+    "frontend_ui": {
+      "merge_button": "data-testid='merge-btn' - appears in bulk actions bar when 2+ items selected",
+      "split_button": "data-testid='split-{item_id}' - appears in expanded detail of multi-image items",
+      "suggest_groups_button": "data-testid='suggest-groups-btn' - purple button in action bar",
+      "suggested_groups_banner": "data-testid='suggested-groups' - purple banner with thumbnails, Merge/Dismiss buttons",
+      "multi_thumbnail_display": "Merged items show stacked images with count badge"
+    }
+  },
+  "mocked_api": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": [],
+    "note": "All APIs are real. Vision AI analysis not tested (expensive), but suggest-groups works with items that have vision_analysis set."
+  }
+}

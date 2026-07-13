@@ -1,0 +1,114 @@
+{
+  "summary": "PDF Intake Feature testing complete. Backend: 15/15 tests passed (100%). Frontend: All UI elements verified. PDF upload extracts products correctly with SKU, color, size, unit_cost, quantity. Deduplication merges by SKU. Vendor auto-detected as SHEIN. Source type 'pdf_upload' stored correctly. Suggested prices calculated. Extraction evidence shows page number and SKU.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: GET /api/intake/sessions/{session_id} - SHEIN session exists with 63 items",
+    "Backend: All 63 items have source_type='pdf_upload'",
+    "Backend: All items have extraction_evidence with 'PDF page X | SKU: xxx' format",
+    "Backend: All items have SKU in attribute_suggestions (SHEIN format: 2 letters + digits)",
+    "Backend: All items have vendor='SHEIN' in attribute_suggestions",
+    "Backend: All items have suggested_price calculated (>= unit_cost)",
+    "Backend: Items have color and size extracted (>30 items each)",
+    "Backend: All items have unit_cost extracted ($0.50-$50 range)",
+    "Backend: POST /api/intake/sessions/{session_id}/upload-pdf requires authentication (401)",
+    "Backend: Non-PDF file upload returns 400 error with 'PDF' in message",
+    "Backend: Upload to nonexistent session returns 404",
+    "Backend: GET /api/intake/items/{item_id}/check-duplicates works on PDF items",
+    "Backend: Duplicate flags saved to item after check",
+    "Backend: Real SHEIN PDF upload creates 63 unique items from 86 raw (23 dupes merged)",
+    "Backend: pdf_upload is valid source type for manual item creation",
+    "Frontend: Login works with password TSFounder!Vault2026#Secure",
+    "Frontend: Product Intake nav accessible in sidebar",
+    "Frontend: SHEIN session visible in intake list with 63 items",
+    "Frontend: IntakeSession page loads with all action buttons",
+    "Frontend: 'Upload PDF' button visible in action bar",
+    "Frontend: 'Paste & Extract' button visible",
+    "Frontend: 'Add Manually' button visible",
+    "Frontend: 'Upload CSV/TSV' button visible",
+    "Frontend: 'Generate All Listings' button visible",
+    "Frontend: 'Export CSV' button visible",
+    "Frontend: Items table shows 63 item rows",
+    "Frontend: Item detail panel opens on click",
+    "Frontend: 'Check Dupes' button in detail panel",
+    "Frontend: 'Generate/Regenerate' button in detail panel",
+    "Frontend: 'Edit' button in detail panel",
+    "Frontend: Extraction Evidence toggle shows 'PDF page 7 | SKU: sb25101739041012113'",
+    "Frontend: Attribute Suggestions section shows sku, list_price, vendor: SHEIN",
+    "Frontend: Potential Duplicates section shows similar items",
+    "Frontend: Missing Required Fields indicator shows clean_title, short_description, long_description, category"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_pdf_intake.py",
+    "/app/test_reports/pytest/pytest_pdf_intake.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_pdf_intake.py"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "Password: TSFounder!Vault2026#Secure",
+  "seed_data_creation": "Test sessions created and cleaned up during testing (TEST_PDF_Error, TEST_PDF_Upload, TEST_Source_Type)",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "PDF Intake feature fully tested. Endpoint: POST /api/intake/sessions/{session_id}/upload-pdf accepts multipart/form-data with 'file' field. PDF parser uses pdfplumber and regex extraction for SHEIN SKU formats. Deduplication merges by SKU. Response includes: uploaded_count, total_pages, product_pages, raw_item_count, duplicate_count, detected_vendor, duplicate_log, items. Items have source_type='pdf_upload', extraction_evidence='PDF page X | SKU: xxx', attribute_suggestions with sku/list_price/vendor. SHEIN session e54de4dc-5308-4b63-b1e1-f9af5f7d3225 has 63 items from 51-page PDF (86 raw -> 63 unique, 23 dupes merged).",
+  "verified_features": {
+    "pdf_upload_endpoint": {
+      "url": "POST /api/intake/sessions/{session_id}/upload-pdf",
+      "method": "multipart/form-data with 'file' field",
+      "supported_formats": ["PDF"],
+      "response_fields": ["uploaded_count", "filename", "total_pages", "product_pages", "raw_item_count", "duplicate_count", "detected_vendor", "duplicate_log", "items"],
+      "error_handling": {
+        "non_pdf": "400 - File must be a PDF",
+        "no_auth": "401 - Unauthorized",
+        "no_session": "404 - Session not found",
+        "no_items": "400 - No product items found in PDF"
+      }
+    },
+    "pdf_extraction": {
+      "parser": "pdfplumber + regex",
+      "sku_formats": ["Format A: qty SKU: sku $price", "Format B: qty SKU: $price (sku on next line)"],
+      "extracted_fields": ["source_title", "sku", "quantity", "unit_cost", "list_price", "color", "size", "page_num"],
+      "vendor_detection": "Auto-detects SHEIN, Temu from page text",
+      "junk_filtering": "Strips return policies, shipment summaries, delivery windows"
+    },
+    "deduplication": {
+      "method": "By SKU - first occurrence wins for title/price",
+      "quantity_merge": "Quantities summed for duplicate SKUs",
+      "duplicate_log": "Returns list of merged items with sku, title, page, action"
+    },
+    "item_storage": {
+      "source_type": "pdf_upload",
+      "extraction_evidence": "PDF page {num} | SKU: {sku}",
+      "attribute_suggestions": {"sku": "string", "list_price": "string", "vendor": "string"},
+      "suggested_price": "Calculated from unit_cost using intake settings"
+    },
+    "frontend_ui": {
+      "upload_pdf_btn": "[data-testid='upload-pdf-btn']",
+      "pdf_result_banner": "[data-testid='pdf-result-banner'] - shows after upload with stats",
+      "extraction_evidence": "[data-testid='toggle-evidence'] / [data-testid='evidence-text']",
+      "attribute_suggestions": "[data-testid='attribute-suggestions']"
+    },
+    "shein_session": {
+      "id": "e54de4dc-5308-4b63-b1e1-f9af5f7d3225",
+      "source_store": "SHEIN",
+      "item_count": 63,
+      "pdf_stats": "51 pages, 86 raw items, 23 duplicates merged"
+    }
+  },
+  "mocked_api": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --radius: 0rem;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+}
+
+* {
+    border-color: hsl(var(--border));
+}
+
+body {
+    margin: 0;
+    font-family: 'IBM Plex Mono', monospace;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #09090B;
+    color: #FAFAFA;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', sans-serif;
+}
+
+code {
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #09090B;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #27272A;
+    border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #3F3F46;
+}
+
+/* Selection */
+::selection {
+    background: #FAFAFA;
+    color: #09090B;
+}
+
+/* Focus states */
+*:focus-visible {
+    outline: 1px solid #52525B;
+    outline-offset: 2px;
+}
+
+/* Status colors */
+.status-approve { color: #34C759; }
+.status-review { color: #FFCC00; }
+.status-rewrite { color: #FF3B30; }
+.status-defer { color: #8E8E93; }
+
+.bg-status-approve { background-color: rgba(52, 199, 89, 0.1); border-color: #34C759; }
+.bg-status-review { background-color: rgba(255, 204, 0, 0.1); border-color: #FFCC00; }
+.bg-status-rewrite { background-color: rgba(255, 59, 48, 0.1); border-color: #FF3B30; }
+.bg-status-defer { background-color: rgba(142, 142, 147, 0.1); border-color: #8E8E93; }
+
+/* Transitions */
+.transition-fast {
+    transition: all 150ms ease-linear;
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}
