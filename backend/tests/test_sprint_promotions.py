@@ -14,7 +14,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://page-queue-hub.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://minion-approval-test.preview.emergentagent.com').rstrip('/')
 PASSWORD = "TSFounder!Vault2026#Secure"
 
 # Known IDs from the promotions

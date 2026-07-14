@@ -7,7 +7,7 @@ import requests
 import os
 import time
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://page-queue-hub.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://minion-approval-test.preview.emergentagent.com')
 PASSWORD = "TSFounder!Vault2026#Secure"
 
 
