@@ -188,8 +188,16 @@ async def route_page_to_wp(page_id: str):
 
 # ---- Worker Execution ----
 
-async def execute_worker_task(task_id: str) -> dict:
-    """Execute a worker task based on its type."""
+async def execute_worker_task(task_id: str, user: dict = None) -> dict:
+    """
+    Execute a worker task based on its type.
+
+    `user` is the authenticated session (from get_current_user), threaded
+    through ONLY so the wp_placement worker can resolve a server-derived
+    approval identity for live WordPress writes (see services/wp_write_safety.py).
+    Jenny, Rene, and Sam never touch WordPress and ignore this parameter
+    entirely -- their behavior is unchanged.
+    """
     task = await db.worker_tasks.find_one({"id": task_id}, {"_id": 0})
     if not task:
         return {"error": "Task not found"}
@@ -214,7 +222,7 @@ async def execute_worker_task(task_id: str) -> dict:
         elif worker == "sam":
             result = await _execute_sam(task)
         elif worker == "wp_placement":
-            result = await _execute_wp(task)
+            result = await _execute_wp(task, user=user)
         else:
             result = {"error": f"Unknown worker: {worker}"}
     except Exception as e:
@@ -577,22 +585,38 @@ async def _execute_sam(task: dict) -> dict:
 
 # ---- WP Placement Worker ----
 
-async def _execute_wp(task: dict) -> dict:
-    """WP Placement worker: creates new drafts OR updates existing pages."""
+async def _execute_wp(task: dict, user: dict = None) -> dict:
+    """
+    WP Placement worker: creates new drafts OR updates existing pages.
+
+    Write-safety gate (safety/unified-wp-write-gate-20260714):
+    task["context"]["execution_mode"] controls what happens, defaulting to
+    "dry_run" when absent so a task's first execution (the founder's first
+    click on "Execute") NEVER writes to WordPress -- it produces a preview
+    and an approval_token, and the task lands in "needs_review" via the
+    existing status mechanism (result.needs_review == True). A second,
+    explicit execute call with execution_mode="live" and that token is
+    required to actually write.
+    """
     task_type = task.get("task_type", "")
 
     # Route to update handler for existing page updates
     if task_type == "wp_page_update":
-        return await _execute_wp_update(task)
+        return await _execute_wp_update(task, user=user)
 
     # --- Original: create new WP draft ---
     from services.wp_templates import infer_template, get_template
     from services.wp_placement import build_page_content
     from services.wp_client import create_page, IS_LIVE
+    from services.wp_write_safety import issue_approval_token, WpWriteSafetyError
     from services.wp_formatter import parse_content_into_sections, format_content_for_wp
 
     page_id = task["source_item_id"]
     warnings = []
+    context = task.get("context", {}) or {}
+    execution_mode = context.get("execution_mode", "dry_run")
+    publication_mode = context.get("publication_mode", "draft")
+    approval_token = context.get("approval_token")
 
     # 1. Fetch page from Page Ops
     page = await db.pages.find_one({"id": page_id}, {"_id": 0})
@@ -644,7 +668,7 @@ async def _execute_wp(task: dict) -> dict:
         "related_links": [],
     }
 
-    # 5. Build page HTML
+    # 5. Build page HTML — safe to do in every mode, this never writes anywhere
     result = build_page_content(template, structured_content)
     html = result["html"]
 
@@ -662,14 +686,46 @@ async def _execute_wp(task: dict) -> dict:
     settings = await db.wp_settings.find_one({}, {"_id": 0}) or {}
     wp_status = settings.get("default_status", "draft")
 
-    # 7. Create WP draft
-    wp_page = await create_page(
-        title=page_title,
-        slug=slug,
-        content=html,
-        status=wp_status,
-        meta={},
-    )
+    write_payload = {"title": page_title, "slug": slug, "content": html, "meta": {}}
+
+    # ---- DRY RUN (default): preview + approval token, no write ----
+    if execution_mode == "dry_run":
+        approval = await issue_approval_token(
+            scope="single",
+            scope_ids=[page_id],
+            payload=write_payload,
+            publication_mode=publication_mode,
+        )
+        return {
+            "needs_review": True,
+            "reason": "Dry-run preview ready — review and re-execute with execution_mode=live to write to WordPress",
+            "preview": {
+                "template": template["name"],
+                "sections_placed": result["sections_placed"],
+                "sections_skipped": result["sections_skipped"],
+                "html_preview": html,
+                "publication_mode": publication_mode,
+            },
+            "approval_token": approval["token"],
+            "expires_at": approval["expires_at"],
+            "warnings": warnings,
+        }
+
+    # ---- MOCK / LIVE: an actual write is being requested ----
+    try:
+        wp_page = await create_page(
+            title=page_title,
+            slug=slug,
+            content=html,
+            status=wp_status,
+            meta={},
+            execution_mode=execution_mode,
+            approval_token=approval_token,
+            scope_ids=[page_id],
+            user=user,
+        )
+    except WpWriteSafetyError as e:
+        return {"error": str(e), "success": False, "warnings": warnings}
 
     if not wp_page:
         return {
@@ -694,7 +750,8 @@ async def _execute_wp(task: dict) -> dict:
         "sections_skipped": result["sections_skipped"],
         "warnings": warnings,
         "wp_connected": IS_LIVE,
-        "status": wp_status,
+        "execution_mode": execution_mode,
+        "status": wp_page.get("status", wp_status),
         "source": "worker_queue",
         "source_page_ops_id": page_id,
         "created_at": now,
@@ -713,20 +770,28 @@ async def _execute_wp(task: dict) -> dict:
         "success": True,
         "wp_page_id": wp_page.get("id"),
         "wp_id": wp_page.get("wp_id"),
-        "wp_status": wp_status,
+        "wp_status": wp_page.get("status", wp_status),
         "template": template["name"],
         "sections_placed": len(result["sections_placed"]),
         "sections_skipped": len(result["sections_skipped"]),
         "wp_connected": IS_LIVE,
         "mock": wp_page.get("mock", False),
         "warnings": warnings,
-        "summary": f"{'Created WP draft' if IS_LIVE else 'Created mock draft'}: {page_title} ({template['name']}, {len(result['sections_placed'])} sections)",
+        "summary": f"{'Created WP draft' if execution_mode == 'live' else 'Created mock draft'}: {page_title} ({template['name']}, {len(result['sections_placed'])} sections)",
     }
 
 
-async def _execute_wp_update(task: dict) -> dict:
-    """WP Placement: UPDATE an existing WordPress page (not create new)."""
+async def _execute_wp_update(task: dict, user: dict = None) -> dict:
+    """
+    WP Placement: UPDATE an existing WordPress page (not create new).
+
+    Same write-safety gate as _execute_wp(): defaults to execution_mode
+    "dry_run", which builds the exact new_content and returns it as a
+    preview + approval_token without writing, leaving the Jenny -> Rene
+    content-drafting chain that feeds this task completely unaffected.
+    """
     from services.wp_client import update_page, get_page, IS_LIVE
+    from services.wp_write_safety import issue_approval_token, WpWriteSafetyError
 
     context = task.get("context", {})
     drafted_html = context.get("drafted_html", "")
@@ -735,6 +800,9 @@ async def _execute_wp_update(task: dict) -> dict:
     insert_after = context.get("insert_after", "")
     insert_before = context.get("insert_before", "")
     page_name = context.get("page_name", "Unknown")
+    execution_mode = context.get("execution_mode", "dry_run")
+    publication_mode = context.get("publication_mode", "draft")
+    approval_token = context.get("approval_token")
     warnings = []
 
     if not drafted_html:
@@ -799,11 +867,44 @@ async def _execute_wp_update(task: dict) -> dict:
         new_content = current_content + "\n" + drafted_html
         warnings.append("No insert location specified — content appended at end")
 
-    # Update the WordPress page (preserve current status — do NOT publish)
-    wp_result = await update_page(
-        page_id=str(wp_page_id),
-        content=new_content,
-    )
+    write_payload = {"page_id": str(wp_page_id), "content": new_content, "title": None, "slug": None, "meta": {}}
+
+    # ---- DRY RUN (default): preview + approval token, no write ----
+    if execution_mode == "dry_run":
+        approval = await issue_approval_token(
+            scope="single",
+            scope_ids=[str(wp_page_id)],
+            payload=write_payload,
+            publication_mode=publication_mode,
+        )
+        return {
+            "needs_review": True,
+            "reason": "Dry-run preview ready — review and re-execute with execution_mode=live to write to WordPress",
+            "preview": {
+                "page_title": page_name,
+                "status_before": status_before,
+                "content_added_chars": len(drafted_html),
+                "insert_location": insert_after or insert_before or "end of page",
+                "new_content_preview": new_content,
+            },
+            "approval_token": approval["token"],
+            "expires_at": approval["expires_at"],
+            "warnings": warnings,
+        }
+
+    # ---- MOCK / LIVE: an actual write is being requested ----
+    # (preserve current status — this path never publishes; see wp_client.py)
+    try:
+        wp_result = await update_page(
+            page_id=str(wp_page_id),
+            content=new_content,
+            execution_mode=execution_mode,
+            approval_token=approval_token,
+            scope_ids=[str(wp_page_id)],
+            user=user,
+        )
+    except WpWriteSafetyError as e:
+        return {"error": str(e), "success": False, "warnings": warnings}
 
     if not wp_result:
         return {

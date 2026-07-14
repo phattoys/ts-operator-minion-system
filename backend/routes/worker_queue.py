@@ -17,6 +17,19 @@ from services.worker_queue import (
     route_after_analysis,
 )
 
+
+class ExecuteTaskRequest(BaseModel):
+    """
+    Optional body for POST /tasks/{task_id}/execute. Only meaningful for the
+    wp_placement worker (Jenny/Rene ignore these fields entirely and are
+    unaffected). Omitting this body entirely defaults execution_mode to
+    "dry_run" -- the first execute on a wp_placement task always produces a
+    preview + approval_token, never a live write.
+    """
+    execution_mode: Optional[str] = None
+    approval_token: Optional[str] = None
+    publication_mode: Optional[str] = None
+
 worker_queue_router = APIRouter(prefix="/api/worker-queue")
 
 
@@ -78,8 +91,21 @@ async def get_task(task_id: str, user: dict = Depends(get_current_user)):
 # ================== EXECUTE TASK ==================
 
 @worker_queue_router.post("/tasks/{task_id}/execute")
-async def run_task(task_id: str, user: dict = Depends(get_current_user)):
-    """Manually execute a queued task (founder-triggered)."""
+async def run_task(
+    task_id: str,
+    body: Optional[ExecuteTaskRequest] = None,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Manually execute a queued task (founder-triggered).
+
+    For the wp_placement worker: omitting `body` (or its execution_mode)
+    defaults to a dry_run -- the task moves to "needs_review" with a preview
+    and approval_token in its result, and NOTHING is written to WordPress.
+    A second call with body.execution_mode="live" and body.approval_token
+    set to that token performs the real write. Jenny/Rene/Sam ignore `body`
+    entirely; their auto-execute behavior is unchanged.
+    """
     task = await db.worker_tasks.find_one({"id": task_id}, {"_id": 0})
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -87,7 +113,18 @@ async def run_task(task_id: str, user: dict = Depends(get_current_user)):
     if task["status"] not in ["queued", "needs_review"]:
         raise HTTPException(status_code=400, detail=f"Task is {task['status']}, cannot execute")
 
-    result = await execute_worker_task(task_id)
+    if body is not None and task.get("worker") == "wp_placement":
+        context_updates = {}
+        if body.execution_mode is not None:
+            context_updates["context.execution_mode"] = body.execution_mode
+        if body.approval_token is not None:
+            context_updates["context.approval_token"] = body.approval_token
+        if body.publication_mode is not None:
+            context_updates["context.publication_mode"] = body.publication_mode
+        if context_updates:
+            await db.worker_tasks.update_one({"id": task_id}, {"$set": context_updates})
+
+    result = await execute_worker_task(task_id, user=user)
     return result
 
 
@@ -115,7 +152,7 @@ async def batch_execute(request: BatchExecuteRequest, user: dict = Depends(get_c
             continue
 
         try:
-            result = await execute_worker_task(task_id)
+            result = await execute_worker_task(task_id, user=user)
             if result.get("status") == "completed":
                 results["executed"] += 1
             elif result.get("status") == "needs_review":

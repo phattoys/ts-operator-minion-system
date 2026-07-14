@@ -10,6 +10,7 @@ from services.helpers import log_activity
 from services.wp_templates import list_templates, get_template, infer_template, UX_BLOCKS
 from services.wp_placement import build_page_content
 from services.wp_client import create_page, update_page, get_pages, get_page, IS_LIVE
+from services.wp_write_safety import issue_approval_token, WpWriteSafetyError
 
 wp_placement_router = APIRouter(prefix="/api/wp-placement")
 
@@ -52,6 +53,23 @@ async def run_placement(
     request: WpPlacementRequest,
     user: dict = Depends(get_current_user),
 ):
+    """
+    Unified write-safety flow (safety/unified-wp-write-gate-20260714):
+
+      execution.execution_mode == "dry_run" (default) ->
+          builds and validates the page content, returns a preview plus a
+          short-lived, single-use approval_token. NO write of any kind.
+
+      execution.execution_mode == "mock" ->
+          writes to the local Mongo mock collection only, regardless of
+          whether real WordPress credentials are configured.
+
+      execution.execution_mode == "live" ->
+          requires execution.approval_token from a prior dry_run whose
+          scope and payload still match. Performs the real WordPress write.
+          Defaults to WordPress status "draft" unless
+          execution.publication_mode == "publish" was explicitly approved.
+    """
     if request.mode not in WP_PLACEMENT_MODES:
         raise HTTPException(status_code=400, detail=f"Mode must be one of: {WP_PLACEMENT_MODES}")
 
@@ -89,7 +107,7 @@ async def run_placement(
         "related_links": request.related_links or [],
     }
 
-    # Run placement engine
+    # Run placement engine — safe to run in every mode, this never writes anywhere
     result = build_page_content(template, content)
 
     meta = {}
@@ -100,30 +118,95 @@ async def run_placement(
 
     slug = (request.slug or "").strip() or request.page_title.lower().replace(" ", "-")[:60]
 
-    # Create or update
-    wp_page = None
+    exec_mode = request.execution.execution_mode.value
+    publication_mode = request.execution.publication_mode.value
+
+    # Resolve the exact write payload + scope now, identically to what
+    # wp_client will (re)compute at live time, so the payload hash bound to
+    # the approval token matches on both sides.
+    update_slug = None
     if request.mode == "create":
-        wp_page = await create_page(
-            title=request.page_title.strip(),
-            slug=slug,
-            content=result["html"],
-            status=settings.get("default_status", "draft"),
-            meta=meta,
-        )
-    elif request.mode == "update":
+        scope = "single"
+        scope_ids = [slug]
+        write_payload = {"title": request.page_title.strip(), "slug": slug, "content": result["html"], "meta": meta}
+    else:  # update
         if not request.target_page_id:
             raise HTTPException(status_code=400, detail="target_page_id is required for update mode")
         existing = await get_page(request.target_page_id)
         if not existing:
             raise HTTPException(status_code=404, detail="Target page not found")
         update_slug = None if settings.get("preserve_slug_on_update") else slug
-        wp_page = await update_page(
-            page_id=request.target_page_id,
-            content=result["html"],
-            title=request.page_title.strip(),
-            slug=update_slug,
-            meta=meta,
+        scope = "single"
+        scope_ids = [request.target_page_id]
+        write_payload = {
+            "page_id": request.target_page_id,
+            "content": result["html"],
+            "title": request.page_title.strip(),
+            "slug": update_slug,
+            "meta": meta,
+        }
+
+    # ---- DRY RUN: preview + token only, no write ----
+    if exec_mode == "dry_run":
+        approval = await issue_approval_token(
+            scope=scope,
+            scope_ids=scope_ids,
+            payload=write_payload,
+            publication_mode=publication_mode,
         )
+        warnings = list(result["warnings"])
+        if inference_result and inference_result.get("needs_review"):
+            warnings.append(f"Template auto-inferred ({inference_result['confidence']} confidence): {inference_result.get('reason') or 'verify selection'}")
+
+        return {
+            "execution_mode": "dry_run",
+            "wrote_to_wordpress": False,
+            "preview": {
+                "mode": request.mode,
+                "page_title": request.page_title.strip(),
+                "slug": slug,
+                "template_id": template_id,
+                "template_name": template["name"],
+                "inference": inference_result,
+                "sections_placed": result["sections_placed"],
+                "sections_skipped": result["sections_skipped"],
+                "warnings": warnings,
+                "html_preview": result["html"],
+                "publication_mode": publication_mode,
+            },
+            "approval_token": approval["token"],
+            "expires_at": approval["expires_at"],
+        }
+
+    # ---- MOCK / LIVE: an actual write is being requested ----
+    try:
+        wp_page = None
+        if request.mode == "create":
+            wp_page = await create_page(
+                title=write_payload["title"],
+                slug=write_payload["slug"],
+                content=write_payload["content"],
+                status=settings.get("default_status", "draft"),
+                meta=write_payload["meta"],
+                execution_mode=exec_mode,
+                approval_token=request.execution.approval_token,
+                scope_ids=scope_ids,
+                user=user,
+            )
+        else:
+            wp_page = await update_page(
+                page_id=write_payload["page_id"],
+                content=write_payload["content"],
+                title=write_payload["title"],
+                slug=write_payload["slug"],
+                meta=write_payload["meta"],
+                execution_mode=exec_mode,
+                approval_token=request.execution.approval_token,
+                scope_ids=scope_ids,
+                user=user,
+            )
+    except WpWriteSafetyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     if not wp_page:
         raise HTTPException(status_code=500, detail="WordPress page operation failed")
@@ -143,7 +226,9 @@ async def run_placement(
         "sections_skipped": result["sections_skipped"],
         "warnings": result["warnings"],
         "wp_connected": IS_LIVE,
-        "status": settings.get("default_status", "draft"),
+        "execution_mode": exec_mode,
+        "publication_mode": publication_mode,
+        "status": wp_page.get("status", settings.get("default_status", "draft")),
         "created_at": now,
     }
 
@@ -153,9 +238,11 @@ async def run_placement(
     if settings.get("save_placement_log", True):
         await db.wp_placements.insert_one(placement)
 
-    await log_activity("wp_placement", details=f"{'Created' if request.mode == 'create' else 'Updated'} page: {request.page_title.strip()} ({template['name']})")
+    await log_activity("wp_placement", details=f"{'Created' if request.mode == 'create' else 'Updated'} page: {request.page_title.strip()} ({template['name']}) [{exec_mode}]")
 
     return {
+        "execution_mode": exec_mode,
+        "wrote_to_wordpress": exec_mode == "live",
         "placement": {k: v for k, v in placement.items() if k != "_id"},
         "page": wp_page,
         "html_preview": result["html"],

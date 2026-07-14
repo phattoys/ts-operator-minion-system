@@ -10,6 +10,7 @@ import base64
 import httpx
 from datetime import datetime, timezone
 from database import db, logger
+from services.wp_write_safety import enforce_live_write, WpWriteSafetyError
 
 
 WP_SITE_URL = os.environ.get("WP_SITE_URL", "").rstrip("/")
@@ -32,16 +33,107 @@ else:
     logger.info("[WP Client] Mock mode — no WordPress credentials")
 
 
-async def create_page(title: str, slug: str, content: str, status: str = "draft", meta: dict = None) -> dict:
-    if IS_LIVE:
-        return await _live_create_page(title, slug, content, status, meta)
-    return await _mock_create_page(title, slug, content, status, meta)
+# ================== UNIFIED WRITE-SAFETY GATE ==================
+#
+# create_page() and update_page() are the ONLY functions in this codebase
+# that can reach real WordPress. Every write path -- the direct
+# /api/wp-placement/place route, the Worker Queue's wp_placement worker,
+# and any future OPS worker or execution-manifest task -- must call through
+# here, and both functions now REQUIRE an explicit execution_mode. There is
+# no default that means "skip the check": a caller that doesn't pass
+# execution_mode gets an immediate TypeError rather than an accidental
+# live write, and a caller that passes an unrecognized mode gets a raised
+# WpWriteSafetyError rather than silent fallback behavior.
+#
+# execution_mode:
+#   "mock"    -> always writes to the local Mongo mock collection, even if
+#                real WordPress credentials are configured. Never touches
+#                real WordPress.
+#   "live"    -> requires a valid, unexpired, unconsumed, payload-bound,
+#                scope-bound approval_token (see services/wp_write_safety.py).
+#                Fails loudly if credentials are absent, if the token is
+#                missing/invalid/expired/consumed, or if the payload/scope
+#                no longer match what was approved.
+#
+# "dry_run" is intentionally NOT handled here: a dry run never reaches this
+# module at all. Route/service code builds and returns a preview using
+# services/wp_placement.build_page_content() directly and calls
+# services.wp_write_safety.issue_approval_token() -- it never calls
+# create_page()/update_page() in dry_run mode.
+#
+# Publication safety: a live write is not automatic permission to publish
+# publicly. Unless publication_mode == "publish" was explicitly authorized
+# at approval time, the WordPress status is forced to "draft" here,
+# regardless of what status the caller requested.
 
 
-async def update_page(page_id: str, content: str, title: str = None, slug: str = None, meta: dict = None) -> dict:
-    if IS_LIVE:
-        return await _live_update_page(page_id, content, title, slug, meta)
-    return await _mock_update_page(page_id, content, title, slug, meta)
+async def create_page(
+    title: str,
+    slug: str,
+    content: str,
+    status: str = "draft",
+    meta: dict = None,
+    *,
+    execution_mode: str,
+    approval_token: str = None,
+    scope_ids: list = None,
+    user: dict = None,
+) -> dict:
+    if execution_mode == "mock":
+        return await _mock_create_page(title, slug, content, status, meta)
+
+    if execution_mode != "live":
+        raise WpWriteSafetyError(
+            f"create_page() called with unsupported execution_mode={execution_mode!r}. "
+            "Dry runs must not call create_page() at all -- build a preview instead."
+        )
+
+    payload = {"title": title, "slug": slug, "content": content, "meta": meta or {}}
+    approval = await enforce_live_write(
+        execution_mode=execution_mode,
+        approval_token=approval_token,
+        scope_ids=scope_ids or [slug or title],
+        payload=payload,
+        user=user or {},
+        is_live=IS_LIVE,
+    )
+    final_status = status if approval.get("publication_mode") == "publish" else "draft"
+    return await _live_create_page(title, slug, content, final_status, meta)
+
+
+async def update_page(
+    page_id: str,
+    content: str,
+    title: str = None,
+    slug: str = None,
+    meta: dict = None,
+    *,
+    execution_mode: str,
+    approval_token: str = None,
+    scope_ids: list = None,
+    user: dict = None,
+) -> dict:
+    if execution_mode == "mock":
+        return await _mock_update_page(page_id, content, title, slug, meta)
+
+    if execution_mode != "live":
+        raise WpWriteSafetyError(
+            f"update_page() called with unsupported execution_mode={execution_mode!r}. "
+            "Dry runs must not call update_page() at all -- build a preview instead."
+        )
+
+    payload = {"page_id": page_id, "content": content, "title": title, "slug": slug, "meta": meta or {}}
+    await enforce_live_write(
+        execution_mode=execution_mode,
+        approval_token=approval_token,
+        scope_ids=scope_ids or [page_id],
+        payload=payload,
+        user=user or {},
+        is_live=IS_LIVE,
+    )
+    # Page updates never change publish status implicitly -- WordPress
+    # preserves whatever status the target page already has.
+    return await _live_update_page(page_id, content, title, slug, meta)
 
 
 async def get_pages(status: str = "draft", per_page: int = 50) -> list:

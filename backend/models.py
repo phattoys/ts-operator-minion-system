@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from enum import Enum
+from datetime import datetime
 from database import PAGE_GENERATION_MODEL, QUALITY_SCORING_MODEL, REWRITE_MODEL
 
 
@@ -653,6 +655,70 @@ class ResolveDuplicateRequest(BaseModel):
 
 WP_PLACEMENT_MODES = ["create", "update"]
 
+
+# ---- WP Write-Safety Models ----
+# Unified write-safety contract for ALL WordPress write paths (direct route,
+# Worker Queue, and any future OPS worker or execution-manifest task).
+# See: safety/unified-wp-write-gate-20260714
+
+class WpExecutionMode(str, Enum):
+    """
+    mock     -> never touches real WordPress, regardless of credentials present
+    dry_run  -> builds/validates content and returns a preview + approval token; no write
+    live     -> performs the real WordPress write; requires a valid approval token
+    """
+    MOCK = "mock"
+    DRY_RUN = "dry_run"
+    LIVE = "live"
+
+class WpPublicationMode(str, Enum):
+    """
+    A live write is not automatically permission to publish publicly.
+    draft   -> (default) creates/updates a real WordPress draft
+    publish -> requires its own explicit authorization; never the implicit default
+    """
+    DRAFT = "draft"
+    PUBLISH = "publish"
+
+class WpApprovalScope(str, Enum):
+    SINGLE = "single"
+    BATCH = "batch"
+
+class WpWriteApproval(BaseModel):
+    """
+    Attached to any request/task that may reach the WP client.
+    Only execution_mode and approval_token are ever supplied by a caller.
+    approved_by / approval_role / approval_source / approved_at are NEVER
+    accepted as client input -- they are resolved server-side, from the
+    authenticated session, at the moment a token is consumed.
+    """
+    execution_mode: WpExecutionMode = WpExecutionMode.DRY_RUN
+    publication_mode: WpPublicationMode = WpPublicationMode.DRAFT
+    approval_token: Optional[str] = None
+
+class WpApprovalRecord(BaseModel):
+    """
+    Server-side record of an issued approval token. Stored in the
+    `wp_write_approvals` collection. Never exposed to the client except
+    as the opaque `token` string.
+    """
+    token: str
+    scope: WpApprovalScope
+    scope_ids: List[str]
+    payload_hash: str
+    publication_mode: WpPublicationMode = WpPublicationMode.DRAFT
+    issued_at: datetime
+    expires_at: datetime
+    consumed: bool = False
+    consumed_at: Optional[datetime] = None
+    # Extensible identity fields -- deliberately not hard-coded to "founder"
+    # so future trusted-execution policies or additional authorized roles
+    # can be introduced without a data-model redesign.
+    approved_by: Optional[str] = None
+    approval_role: Optional[str] = None
+    approval_source: Optional[str] = None
+
+
 class WpPlacementRequest(BaseModel):
     mode: str = "create"
     template_id: str = "standard_content"
@@ -671,6 +737,7 @@ class WpPlacementRequest(BaseModel):
     related_links: Optional[List[Dict[str, str]]] = None
     seo_title: Optional[str] = None
     meta_description: Optional[str] = None
+    execution: WpWriteApproval = Field(default_factory=WpWriteApproval)
 
 class WpPlacementSettingsUpdate(BaseModel):
     default_status: Optional[str] = None
