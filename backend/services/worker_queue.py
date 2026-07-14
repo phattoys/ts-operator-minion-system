@@ -712,12 +712,18 @@ async def _execute_wp(task: dict, user: dict = None) -> dict:
         }
 
     # ---- MOCK / LIVE: an actual write is being requested ----
+    # See routes/wp_placement.py for why this can't just be wp_status:
+    # wp_client.create_page() independently re-enforces this from the
+    # consumed approval record either way, but an authorized "publish"
+    # needs the requested status to actually say "publish" to take effect.
+    desired_status = "publish" if publication_mode == "publish" else wp_status
+
     try:
         wp_page = await create_page(
             title=page_title,
             slug=slug,
             content=html,
-            status=wp_status,
+            status=desired_status,
             meta={},
             execution_mode=execution_mode,
             approval_token=approval_token,

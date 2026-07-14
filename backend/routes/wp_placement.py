@@ -179,6 +179,14 @@ async def run_placement(
         }
 
     # ---- MOCK / LIVE: an actual write is being requested ----
+    # The requested status must reflect the approved publication_mode --
+    # wp_client.create_page() independently re-derives and enforces this
+    # from the consumed approval record regardless of what's passed here
+    # (defense in depth), but if this route always asked for the settings
+    # default, an explicitly authorized "publish" could never actually take
+    # effect even when properly approved.
+    desired_status = "publish" if publication_mode == "publish" else settings.get("default_status", "draft")
+
     try:
         wp_page = None
         if request.mode == "create":
@@ -186,7 +194,7 @@ async def run_placement(
                 title=write_payload["title"],
                 slug=write_payload["slug"],
                 content=write_payload["content"],
-                status=settings.get("default_status", "draft"),
+                status=desired_status,
                 meta=write_payload["meta"],
                 execution_mode=exec_mode,
                 approval_token=request.execution.approval_token,

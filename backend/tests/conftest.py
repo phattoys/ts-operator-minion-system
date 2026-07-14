@@ -52,7 +52,8 @@ def mock_db(monkeypatch):
     Fresh in-memory Mongo database per test, patched into every module that
     imported `db` by name (each module bound its own reference at import
     time via `from database import db`, so the patch must target each
-    module's namespace individually).
+    module's namespace individually -- `from database import db` copies a
+    reference, it isn't a live link back to database.db).
     """
     client = AsyncMongoMockClient()
     fake_db = client["ts_ops_write_safety_test"]
@@ -68,5 +69,21 @@ def mock_db(monkeypatch):
 
     import services.worker_queue as wq
     monkeypatch.setattr(wq, "db", fake_db)
+
+    import services.helpers as helpers
+    monkeypatch.setattr(helpers, "db", fake_db)
+
+    import auth
+    monkeypatch.setattr(auth, "db", fake_db)
+
+    # Route modules are only imported the FIRST time any test builds the
+    # `client` fixture; on later tests `import routes.x` is a no-op (Python
+    # caches modules), so each route module's own `db` reference must also
+    # be repatched every test, not just the service layer.
+    import routes.wp_placement as wp_placement_route
+    monkeypatch.setattr(wp_placement_route, "db", fake_db)
+
+    import routes.worker_queue as worker_queue_route
+    monkeypatch.setattr(worker_queue_route, "db", fake_db)
 
     return fake_db
