@@ -71,17 +71,24 @@ Live execution fails when (all proven in unit + in-process HTTP suites, is_live 
   - approved_by ✅  approval_role ✅  approval_source ✅  approved_at (consumed_at) ✅
   - Proven by httplevel `test_server_derived_identity_not_trusted_from_client`.
 
-## PHASE 5 — CONTROLLED LIVE WORDPRESS DRAFT ⛔ BLOCKED
-- NOT performed. Requires WP_SITE_URL / WP_USERNAME / WP_APP_PASSWORD via the environment's secure secret mechanism (per founder instruction, credentials will NOT be pasted in chat).
-- Deferred by explicit instruction (1b). **NOT counted as passed.**
-- Title reserved for the single approved live+draft write:
-  `TS Operator Minion Safety Gate Verification — 2026-07-14`
+## PHASE 5 — CONTROLLED LIVE WORDPRESS DRAFT ✅ PASSED
+WordPress credentials configured (IS_LIVE=true against https://temporarysatisfaction.com).
+Exactly ONE explicitly-approved live write performed:
+- Flow: dry_run → preview + approval_token → live+draft → real WP page created as DRAFT.
+- Title: `TS Operator Minion Safety Gate Verification — 2026-07-14`
+- **WordPress page ID: 354948**
+- Status: **draft** (confirmed by refetching from live WP: status=draft, mock=false)
+- Link: https://www.temporarysatisfaction.com/?page_id=354948
+- Approval token consumed exactly ONCE (DB: consumed=true, consumed_at set; consumed-token count = 1).
+- Exact approved payload written: live rendered HTML == dry_run approved HTML (byte-identical); title matches approved.
+- Second use of the SAME token → HTTP 409 "approval_token has already been used." ✅
+- Server-derived approval identity persisted: approved_by=founder, approval_role=admin, approval_source=manual_confirmation, publication_mode=draft.
 
 ## PHASE 6 — PUBLICATION SAFETY ✅
 - Live does NOT imply publish: `create_page` forces `status="draft"` unless the consumed approval's `publication_mode == "publish"`.
 - Draft is default; publish requires explicit publication_mode==publish locked at approval-issuance time.
 - Proven: unit `test_publish_requires_explicit_authorization`; httplevel `test_live_draft_forces_draft_status_even_if_settings_say_otherwise`, `test_publish_requires_explicit_authorization_at_approval_time`.
-- No public content created (mock mode; no live writes performed).
+- No public content created: unauthenticated GET of the public URL (`/?page_id=354948`) returns **HTTP 404** — the live draft is NOT publicly accessible.
 
 ## PHASE 7 — REGRESSION ✅
 - Jenny: `auto_execute: True` — unchanged. ✅ (unit `test_jenny_and_rene_definitions_unchanged`)
@@ -95,11 +102,22 @@ Live execution fails when (all proven in unit + in-process HTTP suites, is_live 
 
 ## FINAL STATUS
 
-### BLOCKED — ENVIRONMENT REQUIRED
+### READY TO MARK KNOWN-GOOD
 
-Rationale: Every phase that can be verified without live WordPress credentials PASSES with
-zero substantive (safety-gate) failures — all 175 non-passing full-suite results are
-environment/data-dependency or the intended dry_run-default contract change. The single
-remaining mandatory step, Phase 5 (one explicitly-approved live + draft WordPress write),
-cannot be executed until WP_SITE_URL / WP_USERNAME / WP_APP_PASSWORD are provided via the
-secure environment mechanism. No repair is required.
+Rationale: All seven phases verified. The unified WordPress write-safety gate behaves exactly
+as designed — mock never touches WordPress, dry_run is the default and issues a payload- and
+scope-bound single-use token, live execution is refused on any token/credential defect,
+approval identity is server-derived, publication defaults to draft and requires explicit
+authorization, and no worker regression (Jenny/Rene/Sam/WP-placement gating/needs_review)
+was introduced. A single controlled live write produced WordPress DRAFT page 354948 with
+byte-identical payload fidelity, single-use token consumption, and reuse rejection; the draft
+is not publicly accessible (404). The safety-gate source is byte-identical to approved HEAD
+eb52b32, and the protected baseline 912cecd is untouched.
+
+Full-suite non-passing results (148 failed / 27 errors) are entirely environment/data-dependency
+(empty fresh MongoDB, hardcoded pre-existing record IDs, LLM-content dependencies) or the
+intended dry_run-default contract change — ZERO substantive safety-gate failures. Those are
+pre-existing black-box tests unrelated to this branch's scope and would require a seeded
+database to exercise.
+
+Did NOT begin Jenny → Rene → WP Placement E2E work (per instruction).
