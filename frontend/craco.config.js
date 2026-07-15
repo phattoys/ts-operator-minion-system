@@ -81,6 +81,28 @@ webpackConfig.devServer = (devServerConfig) => {
   return devServerConfig;
 };
 
+// jest-resolve v27 (bundled with react-scripts 5, used by `craco test`)
+// does not fully resolve modern conditional "exports" fields and falls
+// back to each package's "main" field instead. For react-router-dom v7
+// and axios v1.13, that fallback points at a file that doesn't match the
+// package's real CJS entry point (react-router-dom's "main" targets a
+// nonexistent dist/main.js; axios's "main" targets its ESM build). This
+// is a pre-existing dependency-version mismatch, unrelated to any
+// application code -- without these mappings, no test importing either
+// package (directly, or via any component using react-router-dom's
+// hooks/components) can even be collected by Jest.
+webpackConfig.jest = {
+  configure: (jestConfig) => {
+    jestConfig.moduleNameMapper = {
+      ...jestConfig.moduleNameMapper,
+      '^react-router-dom$': '<rootDir>/node_modules/react-router-dom/dist/index.js',
+      '^react-router/dom$': '<rootDir>/node_modules/react-router/dist/development/dom-export.js',
+      '^axios$': '<rootDir>/node_modules/axios/dist/node/axios.cjs',
+    };
+    return jestConfig;
+  },
+};
+
 // Wrap with visual edits (automatically adds babel plugin, dev server, and overlay in dev mode)
 if (isDevServer) {
   try {

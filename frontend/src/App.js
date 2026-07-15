@@ -30,6 +30,8 @@ import WpPlacementWorkspace from './pages/WpPlacementWorkspace';
 import FieldListingDashboard from './pages/FieldListingDashboard';
 import FieldListingBatch from './pages/FieldListingBatch';
 import ExecutionSpine from './pages/ExecutionSpine';
+import ExecutionManifestList from './pages/ExecutionManifestList';
+import ExecutionManifestDetail from './pages/ExecutionManifestDetail';
 import './App.css';
 
 function ProtectedRoute({ children }) {
@@ -148,6 +150,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <CatalogItemEditor />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/execution-manifests" 
+        element={
+          <ProtectedRoute>
+            <ExecutionManifestList />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/execution-manifests/:manifestId" 
+        element={
+          <ProtectedRoute>
+            <ExecutionManifestDetail />
           </ProtectedRoute>
         } 
       />

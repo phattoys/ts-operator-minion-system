@@ -198,6 +198,51 @@ item, same as recorded under the worker-chain entry above.
 
 ---
 
+### Execution Manifest Layer Phase 2 — Founder Workspace
+
+- **Status: IN DEVELOPMENT**
+
+**Purpose:** Founder-facing review and execution workspace connected to
+the known-good Phase 1 backend.
+
+**Architecture:**
+```
+TSAF creates.
+Execution Manifest receives and structures.
+OPS Execution Queue organizes.
+OPS operators execute.
+```
+
+Adds `/execution-manifests` (list + filters + sort + Founder Action
+Center) and `/execution-manifests/:manifestId` (detail: header, execution
+item cards, destination support badges, queue actions, trace, asset
+index, honest empty/blocked/error states) to the OPS frontend. Calls the
+existing, unmodified Phase 1 API only — no manifest validation, routing,
+or write-safety logic is duplicated client-side; every decision displayed
+comes from a backend response. See
+`frontend/EXECUTION_MANIFEST_WORKSPACE.md` for routes, visible statuses,
+queue behavior, founder-action behavior, unsupported-destination display,
+and traceability display.
+
+Not built in Phase 2 (explicitly out of scope, per instruction): Metricool/
+Klaviyo/HubSpot/social connectors, order fulfillment, vendor CSV lane,
+TSAF integration transport, a manifest/campaign-packet uploader beyond
+what's needed to display existing manifests.
+
+**Notable infrastructure fix (test tooling only, not application
+behavior):** the frontend had zero existing tests and no
+`@testing-library/*` packages. Adding them surfaced a pre-existing
+incompatibility between `jest-resolve` v27 (bundled with `react-scripts`
+5.0.1) and the conditional `"exports"` fields used by `react-router-dom`
+v7 and current `axios` — both packages' `"main"` fallback points at a
+file that doesn't match their real CJS entry point. Fixed via a
+`moduleNameMapper` in `craco.config.js`'s new `jest` config block, plus a
+`TextEncoder`/`TextDecoder` polyfill in `setupTests.js` that `jsdom`
+(as bundled) doesn't provide but react-router v7 needs. This affects test
+tooling only — production builds/webpack were already unaffected.
+
+---
+
 ## OPS Handoff Architecture
 
 ```
@@ -255,3 +300,9 @@ table reflects `services/worker_queue.py` as of `eb52b3200aa7309fc29ef53e4ce6cb4
 - **2026-07-14** — Execution Manifest Layer Phase 1 real-environment
   verified and marked KNOWN-GOOD. Commit
   `7390c00edb0cfac2394fa10401221bfdd57afb66`.
+- **2026-07-14** — Execution Manifest Layer Phase 2 founder workspace
+  built: manifest list (filters, sort, Founder Action Center), manifest
+  detail (execution item cards, destination support badges, queue
+  actions, trace view, asset index, honest empty/blocked/error states).
+  Connected to the existing, unmodified Phase 1 API only. Status: IN
+  DEVELOPMENT. Branch `ops/execution-manifest-phase-2-workspace-20260714`.

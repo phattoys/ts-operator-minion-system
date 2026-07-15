@@ -36,6 +36,10 @@ export default function Layout({ children }) {
     { to: '/wp-placement', icon: Globe, label: 'WP Placement' },
   ];
 
+  const opsItems = [
+    { to: '/execution-manifests', icon: Layers, label: 'Execution Manifests' },
+  ];
+
   const toolItems = [
     { to: '/specs', icon: BookOpen, label: 'Spec Library' },
     { to: '/lead-magnets', icon: Magnet, label: 'Lead Magnets' },
@@ -120,6 +124,23 @@ export default function Layout({ children }) {
             <span className="text-[10px] text-zinc-600 uppercase tracking-[0.15em]">Product</span>
           </div>
           {productItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => 
+                `nav-link ${isActive ? 'active' : ''}`
+              }
+              data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+            >
+              <item.icon className="w-4 h-4" />
+              <span className="text-sm">{item.label}</span>
+            </NavLink>
+          ))}
+
+          <div className="px-4 mt-5 mb-2">
+            <span className="text-[10px] text-zinc-600 uppercase tracking-[0.15em]">OPS Execution</span>
+          </div>
+          {opsItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
