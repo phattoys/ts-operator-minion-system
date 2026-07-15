@@ -101,7 +101,7 @@ function baseManifest(overrides = {}) {
 }
 
 describe('ExecutionManifestDetail', () => {
-  afterEach(() => jest.clearAllMocks());
+  afterEach(() => jest.resetAllMocks());
 
   test('renders manifest detail header fields', async () => {
     axios.get.mockResolvedValueOnce({ data: baseManifest() });
@@ -220,7 +220,38 @@ describe('ExecutionManifestDetail', () => {
     await waitFor(() => expect(screen.getByTestId('manifest-action-message')).toHaveTextContent(/Queued 1 item/));
   });
 
-  test('trace view shows manifest -> item -> worker task -> status chain when queued', async () => {
+  test('trace view shows the full Jenny -> Rene -> WP Placement worker chain, not just the initial task', async () => {
+    axios.get.mockResolvedValueOnce({ data: baseManifest({ execution_items: [queuedItem] }) });
+    axios.get.mockResolvedValueOnce({
+      data: {
+        manifest_id: 'man-1',
+        items: [{
+          item_id: 'item-4', title: 'Already queued item', destination: 'wordpress', execution_type: 'content_draft',
+          item_status: 'queued', worker_task_id: 'task-wp', worker: 'wp_placement', task_status: 'queued',
+          task_result: {}, task_warnings: [],
+          worker_chain: [
+            { task_id: 'task-jenny', worker: 'jenny', worker_name: 'Jenny', task_type: 'wp_content_draft', status: 'completed', auto_execute: true, founder_action_needed: false, next_action: 'Draft content update for WordPress page', result: { success: true }, warnings: [], created_at: '2026-07-14T00:00:00Z', started_at: '2026-07-14T00:00:01Z', completed_at: '2026-07-14T00:00:02Z' },
+            { task_id: 'task-rene', worker: 'rene', worker_name: 'Rene', task_type: 'wp_content_qa', status: 'completed', auto_execute: true, founder_action_needed: false, next_action: 'QA content update before WordPress placement', result: { passed: true }, warnings: [], created_at: '2026-07-14T00:00:03Z', started_at: '2026-07-14T00:00:04Z', completed_at: '2026-07-14T00:00:05Z' },
+            { task_id: 'task-wp', worker: 'wp_placement', worker_name: 'WP Placement', task_type: 'wp_page_update', status: 'queued', auto_execute: false, founder_action_needed: true, next_action: 'Update existing WordPress page', result: {}, warnings: [], created_at: '2026-07-14T00:00:06Z', started_at: null, completed_at: null },
+          ],
+        }],
+      },
+    });
+
+    renderDetail();
+    await waitFor(() => expect(screen.getByTestId('execution-item-item-4')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Already queued item'));
+
+    await waitFor(() => expect(screen.getByTestId('trace-node-item-4-jenny')).toBeInTheDocument(), { timeout: 5000 });
+    const trace = screen.getByTestId('trace-item-4');
+    expect(within(trace).getByTestId('trace-node-item-4-rene')).toHaveTextContent(/completed/);
+    const wpNode = within(trace).getByTestId('trace-node-item-4-wp_placement');
+    expect(wpNode).toHaveTextContent(/queued/);
+    // The founder-gated node is visually distinguished (shield icon / purple border via founderGated prop)
+    expect(wpNode.className).toMatch(/purple/);
+  });
+
+  test('trace view falls back to the single-task shape for backward compatibility when worker_chain is absent', async () => {
     axios.get.mockResolvedValueOnce({ data: baseManifest({ execution_items: [queuedItem] }) });
     axios.get.mockResolvedValueOnce({
       data: {
@@ -229,6 +260,7 @@ describe('ExecutionManifestDetail', () => {
           item_id: 'item-4', title: 'Already queued item', destination: 'wordpress', execution_type: 'content_draft',
           item_status: 'queued', worker_task_id: 'task-existing-123', worker: 'jenny', task_status: 'completed',
           task_result: { success: true }, task_warnings: [],
+          // no worker_chain field at all -- simulates an older backend response
         }],
       },
     });

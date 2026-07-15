@@ -444,6 +444,53 @@ async def queue_manifest(manifest_id: str, user: dict = None) -> dict:
     return {"manifest_id": manifest_id, "items": results}
 
 
+# ================== WORKER CHAIN AGGREGATION ==================
+#
+# Repair (ops/execution-manifest-phase-2-workspace-20260714, repair pass):
+# Jenny, Rene, and (for wp_content_draft/wp_content_qa/wp_page_update)
+# WP Placement all share the same source_item_id -- that's how
+# services/worker_queue.py's _route_next() finds "the next step for this
+# item" when chaining automatically. But only the FIRST task created by
+# queue_execution_item() was ever linked back via the execution item's
+# worker_task_id, so any task created later in the chain (Rene, WP
+# Placement) was invisible to both the trace endpoint and the Founder
+# Action Center. This aggregates the full chain by source_item_id instead
+# of relying on a single stored worker_task_id.
+
+CHAIN_ORDER = {"jenny": 0, "rene": 1, "sam": 2, "wp_placement": 3}
+
+
+async def get_worker_chain(item_id: str) -> list:
+    """
+    All worker_tasks sharing this execution item's id, ordered
+    deterministically: Jenny -> Rene -> Sam (where applicable) -> WP
+    Placement, with creation time as the secondary sort. Does not assume
+    every item has every worker -- only tasks that actually exist are
+    returned, never invented.
+    """
+    cursor = db.worker_tasks.find({"source_item_id": item_id}, {"_id": 0})
+    tasks = await cursor.to_list(length=100)
+    tasks.sort(key=lambda t: (CHAIN_ORDER.get(t.get("worker"), 99), t.get("created_at") or ""))
+    return [
+        {
+            "task_id": t.get("id"),
+            "worker": t.get("worker"),
+            "worker_name": t.get("worker_name"),
+            "task_type": t.get("task_type"),
+            "status": t.get("status"),
+            "auto_execute": t.get("auto_execute"),
+            "founder_action_needed": t.get("founder_action_needed"),
+            "next_action": t.get("next_action"),
+            "result": t.get("result", {}),
+            "warnings": t.get("warnings", []),
+            "created_at": t.get("created_at"),
+            "started_at": t.get("started_at"),
+            "completed_at": t.get("completed_at"),
+        }
+        for t in tasks
+    ]
+
+
 async def queue_execution_item(manifest_id: str, item_id: str, user: dict = None) -> dict:
     """
     Convert one 'ready' execution item into an existing worker_tasks record.
@@ -514,12 +561,20 @@ async def queue_execution_item(manifest_id: str, item_id: str, user: dict = None
         context=task_context,
     )
 
+    # Jenny/Rene may auto-execute synchronously inside create_worker_task()
+    # above and hand off to a downstream task (e.g. WP Placement) before
+    # this function ever gets control back. Re-aggregate the full chain by
+    # source_item_id so the item's persisted status reflects the CURRENT
+    # actionable step, not just the single task this call directly created.
+    chain = await get_worker_chain(item_id)
+    current = chain[-1] if chain else task
+
     now = datetime.now(timezone.utc).isoformat()
-    if task["status"] == "needs_review":
+    if current["status"] == "needs_review":
         new_item_status = "needs_review"
-    elif task["status"] == "completed":
+    elif current["status"] == "completed":
         new_item_status = "completed"
-    elif task["status"] == "failed":
+    elif current["status"] == "failed":
         new_item_status = "failed"
     else:
         new_item_status = "queued"
@@ -527,10 +582,15 @@ async def queue_execution_item(manifest_id: str, item_id: str, user: dict = None
     await db.execution_manifests.update_one(
         {"manifest_id": manifest_id, "execution_items.item_id": item_id},
         {"$set": {
+            # worker_task_id intentionally still points at the task THIS
+            # call created (Jenny, for the wordpress content_draft/update
+            # rule) -- unchanged meaning, preserved for backward
+            # compatibility with the duplicate-queue check above, which
+            # only needs the referenced task to exist.
             "execution_items.$.worker_task_id": task["id"],
             "execution_items.$.status": new_item_status,
-            "execution_items.$.result": task.get("result", {}),
-            "execution_items.$.warnings": task.get("warnings", []),
+            "execution_items.$.result": current.get("result", {}),
+            "execution_items.$.warnings": current.get("warnings", []),
             "execution_items.$.updated_at": now,
         }},
     )
@@ -548,27 +608,36 @@ async def queue_execution_item(manifest_id: str, item_id: str, user: dict = None
 # ================== TRACEABILITY ==================
 
 async def get_trace(manifest_id: str) -> dict:
-    """manifest -> execution item -> worker task -> status -> result -> warnings"""
+    """
+    manifest -> execution item -> worker chain -> status -> result -> warnings
+
+    Returns the full ordered worker chain per item (worker_chain), plus the
+    original singular fields (worker/task_status/task_result/task_warnings/
+    worker_task_id) repointed at the chain's LAST entry -- the currently
+    actionable step -- for backward compatibility with existing callers
+    that only read those singular fields.
+    """
     manifest = await get_manifest(manifest_id)
     if not manifest:
         raise ManifestValidationError([f"manifest '{manifest_id}' not found"])
 
     trace_items = []
     for item in manifest["execution_items"]:
-        task = None
-        if item.get("worker_task_id"):
-            task = await db.worker_tasks.find_one({"id": item["worker_task_id"]}, {"_id": 0})
+        chain = await get_worker_chain(item["item_id"])
+        current = chain[-1] if chain else None
+
         trace_items.append({
             "item_id": item["item_id"],
             "title": item.get("title"),
             "destination": item.get("destination"),
             "execution_type": item.get("execution_type"),
             "item_status": item.get("status"),
-            "worker_task_id": item.get("worker_task_id"),
-            "worker": task.get("worker") if task else item.get("recommended_worker"),
-            "task_status": task.get("status") if task else None,
-            "task_result": task.get("result") if task else {},
-            "task_warnings": task.get("warnings") if task else [],
+            "worker_task_id": current["task_id"] if current else item.get("worker_task_id"),
+            "worker": current["worker"] if current else item.get("recommended_worker"),
+            "task_status": current["status"] if current else None,
+            "task_result": current["result"] if current else {},
+            "task_warnings": current["warnings"] if current else [],
+            "worker_chain": chain,
         })
 
     return {

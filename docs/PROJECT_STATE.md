@@ -200,7 +200,7 @@ item, same as recorded under the worker-chain entry above.
 
 ### Execution Manifest Layer Phase 2 — Founder Workspace
 
-- **Status: IN DEVELOPMENT**
+- **Status: REPAIR IN PROGRESS**
 
 **Purpose:** Founder-facing review and execution workspace connected to
 the known-good Phase 1 backend.
@@ -240,6 +240,39 @@ file that doesn't match their real CJS entry point. Fixed via a
 `TextEncoder`/`TextDecoder` polyfill in `setupTests.js` that `jsdom`
 (as bundled) doesn't provide but react-router v7 needs. This affects test
 tooling only — production builds/webpack were already unaffected.
+
+**Real-browser review finding (repair in progress):** two explicit Phase
+2 requirements were found not met in real-browser review:
+1. The trace API/UI showed only the initial Jenny task, not the full
+   Jenny → Rene → WP Placement chain that actually exists.
+2. The Founder Action Center never surfaced the downstream founder-gated
+   WP Placement task.
+
+**Root cause:** `queue_execution_item()` only ever linked the execution
+item back to the FIRST task it created (Jenny). Because Jenny and Rene
+are `auto_execute=True`, the entire chain (Jenny → Rene → WP Placement)
+runs synchronously inside that single call via the existing
+`_route_next()` routing — by the time control returns, WP Placement
+already exists and is correctly `queued`/`founder_action_needed=True`,
+but nothing had ever looked past the one task ID stored on the item.
+
+**Repair:** `services/execution_manifest.py` gained
+`get_worker_chain(item_id)`, which aggregates all `worker_tasks` sharing
+an item's `source_item_id` (exactly how `_route_next()` already finds
+"the next step"), ordered deterministically (Jenny → Rene → Sam → WP
+Placement, then creation time). `get_trace()` now returns this as
+`worker_chain` per item, in addition to the original singular fields
+(`worker`/`task_status`/`task_result`/`task_warnings`/`worker_task_id`)
+repointed at the chain's current/last entry for backward compatibility.
+`queue_execution_item()` now derives the execution item's persisted
+`status` from the chain's current step, not just the one task it directly
+created. The frontend's Founder Action Center now inspects real worker
+chains (via the repaired trace endpoint) instead of guessing from an
+item's `status`/`recommended_worker`; the detail view's trace section
+renders the full chain. No worker-queue logic was touched, redesigned, or
+duplicated — this only reads what already exists. WordPress safety
+(dry-run default, founder gating, approval token, single/payload/scope
+binding, draft default, publish authorization) is completely untouched.
 
 ---
 
@@ -306,3 +339,14 @@ table reflects `services/worker_queue.py` as of `eb52b3200aa7309fc29ef53e4ce6cb4
   actions, trace view, asset index, honest empty/blocked/error states).
   Connected to the existing, unmodified Phase 1 API only. Status: IN
   DEVELOPMENT. Branch `ops/execution-manifest-phase-2-workspace-20260714`.
+- **2026-07-14** — Repair pass on Phase 2: real-browser review found the
+  trace API/UI showed only the initial Jenny task, and the Founder Action
+  Center never surfaced the downstream founder-gated WP Placement task.
+  Root cause: the execution item was only ever linked to the first task
+  it created, never to the tasks the existing routing chain created
+  afterward. Fixed by aggregating the full worker chain by
+  `source_item_id` (ordered Jenny → Rene → Sam → WP Placement) in a new
+  `get_worker_chain()` helper, exposed via `trace.worker_chain`, and used
+  by both the detail view's trace section and the Founder Action Center.
+  No worker-queue redesign, no WordPress-safety change. Status: REPAIR IN
+  PROGRESS pending real-browser re-review.

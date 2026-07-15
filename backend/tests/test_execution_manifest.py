@@ -348,12 +348,106 @@ class TestTraceability:
         assert len(trace["items"]) == 1
         traced_item = trace["items"][0]
         assert traced_item["item_id"] == "item-1"
-        assert traced_item["worker_task_id"] == queued["worker_task_id"]
-        assert traced_item["worker"] == "jenny"
-        assert traced_item["task_status"] == "completed"
-        assert "success" in traced_item["task_result"]
+        # Top-level fields reflect the chain's LAST/current task (repaired
+        # behavior -- previously this was always Jenny's own task, even
+        # after the chain moved on to Rene/WP Placement).
+        assert traced_item["worker"] == "wp_placement"
+        assert traced_item["task_status"] == "queued"
+        # Jenny is still represented -- via the chain, not the top-level fields.
+        chain_workers = [t["worker"] for t in traced_item["worker_chain"]]
+        assert chain_workers == ["jenny", "rene", "wp_placement"]
+        assert traced_item["worker_chain"][0]["status"] == "completed"
 
-        # And the manifest itself stores worker_task_id on the item
+        # queue_execution_item's own return value still refers to the task
+        # IT created (Jenny) -- unchanged meaning, used only for the
+        # duplicate-queue check.
+        assert queued["worker"] == "jenny"
+
+        # And the manifest itself stores worker_task_id (still Jenny's, per
+        # the documented backward-compatibility choice) on the item
         stored = await em.get_manifest(manifest["manifest_id"])
         stored_item = next(i for i in stored["execution_items"] if i["item_id"] == "item-1")
         assert stored_item["worker_task_id"] == queued["worker_task_id"]
+        # But the item's overall status reflects the chain's current step,
+        # not just Jenny's completion -- this is the actual repair.
+        assert stored_item["status"] == "queued"
+
+
+class TestTraceRepairWorkerChain:
+    """
+    Repair (ops/execution-manifest-phase-2-workspace-20260714, repair pass):
+    real-browser review found the trace endpoint showed only the initial
+    Jenny task even after Rene and WP Placement had been created by the
+    existing routing chain. These tests prove the fix directly.
+    """
+
+    async def test_trace_returns_full_jenny_rene_wp_placement_chain(self, mock_db):
+        await _seed_wp_page(mock_db)
+        manifest = await em.create_manifest(_manifest_payload())
+        await em.run_validation(manifest["manifest_id"])
+        await em.queue_execution_item(manifest["manifest_id"], "item-1", user=FAKE_USER)
+
+        trace = await em.get_trace(manifest["manifest_id"])
+        chain = trace["items"][0]["worker_chain"]
+        assert len(chain) == 3
+        workers = [t["worker"] for t in chain]
+        assert workers == ["jenny", "rene", "wp_placement"]
+        # Jenny and Rene auto-executed and completed; WP Placement remains
+        # founder-gated and queued -- exactly the real verified chain.
+        assert chain[0]["status"] == "completed"
+        assert chain[1]["status"] == "completed"
+        assert chain[2]["status"] == "queued"
+        assert chain[2]["auto_execute"] is False
+        assert chain[2]["founder_action_needed"] is True
+        # Required fields present on every chain entry
+        for task in chain:
+            for field in ("task_id", "worker", "worker_name", "task_type", "status",
+                          "auto_execute", "founder_action_needed", "next_action",
+                          "result", "warnings", "created_at", "started_at", "completed_at"):
+                assert field in task
+
+    async def test_chain_order_is_deterministic(self, mock_db):
+        await _seed_wp_page(mock_db)
+        manifest = await em.create_manifest(_manifest_payload())
+        await em.run_validation(manifest["manifest_id"])
+        await em.queue_execution_item(manifest["manifest_id"], "item-1", user=FAKE_USER)
+
+        # Fetch twice -- order must not depend on query/storage happenstance.
+        chain_a = await em.get_worker_chain("item-1")
+        chain_b = await em.get_worker_chain("item-1")
+        assert [t["worker"] for t in chain_a] == ["jenny", "rene", "wp_placement"]
+        assert [t["task_id"] for t in chain_a] == [t["task_id"] for t in chain_b]
+
+    async def test_trace_omits_nonexistent_workers_never_invents_tasks(self, mock_db):
+        """An item that hasn't been queued at all must show an empty chain,
+        never a fabricated Jenny/Rene/WP Placement placeholder."""
+        manifest = await em.create_manifest(_manifest_payload())
+        await em.run_validation(manifest["manifest_id"])
+        # Not queued -- item stays "ready", no worker_tasks exist for it.
+        trace = await em.get_trace(manifest["manifest_id"])
+        assert trace["items"][0]["worker_chain"] == []
+
+    async def test_blocked_metricool_item_has_empty_chain_never_invented(self, mock_db):
+        item = _wp_item(item_id="item-metricool", destination="metricool", execution_type="social_post", copy="A post")
+        manifest = await em.create_manifest(_manifest_payload(items=[item]))
+        await em.run_validation(manifest["manifest_id"])
+        trace = await em.get_trace(manifest["manifest_id"])
+        assert trace["items"][0]["worker_chain"] == []
+
+    async def test_no_duplicate_worker_tasks_created_by_chain_aggregation(self, mock_db):
+        """Aggregating the full chain must not itself create any task, and
+        re-queueing must still be refused as a duplicate."""
+        await _seed_wp_page(mock_db)
+        manifest = await em.create_manifest(_manifest_payload())
+        await em.run_validation(manifest["manifest_id"])
+        await em.queue_execution_item(manifest["manifest_id"], "item-1", user=FAKE_USER)
+
+        count_before = await mock_db.worker_tasks.count_documents({"source_item_id": "item-1"})
+        await em.get_trace(manifest["manifest_id"])  # must be read-only
+        count_after = await mock_db.worker_tasks.count_documents({"source_item_id": "item-1"})
+        assert count_before == count_after == 3
+
+        second = await em.queue_execution_item(manifest["manifest_id"], "item-1", user=FAKE_USER)
+        assert second["already_queued"] is True
+        count_final = await mock_db.worker_tasks.count_documents({"source_item_id": "item-1"})
+        assert count_final == 3

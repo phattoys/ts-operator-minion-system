@@ -320,15 +320,28 @@ function ExecutionItemCard({ item, expanded, onToggle, onQueue, queueing, trace 
 }
 
 function TraceSection({ item, trace }) {
+  const chain = (trace && trace.worker_chain) || [];
   return (
     <Field label="Trace">
       <div className="flex items-center gap-2 flex-wrap text-zinc-400" data-testid={`trace-${item.item_id}`}>
         <TraceNode label="Manifest" value={item.manifest_id} />
         <GitBranch className="w-3 h-3 text-zinc-700" />
         <TraceNode label="Execution Item" value={item.item_id} />
-        <GitBranch className="w-3 h-3 text-zinc-700" />
-        {item.worker_task_id ? (
+        {chain.length > 0 ? (
+          chain.map((task) => (
+            <React.Fragment key={task.task_id}>
+              <GitBranch className="w-3 h-3 text-zinc-700" />
+              <TraceNode
+                label={task.worker_name || task.worker}
+                value={task.status}
+                founderGated={task.founder_action_needed}
+                testId={`trace-node-${item.item_id}-${task.worker}`}
+              />
+            </React.Fragment>
+          ))
+        ) : item.worker_task_id ? (
           <>
+            <GitBranch className="w-3 h-3 text-zinc-700" />
             <TraceNode label="Worker Task" value={item.worker_task_id.slice(0, 8) + '...'} />
             <GitBranch className="w-3 h-3 text-zinc-700" />
             <TraceNode label="Worker" value={(trace && trace.worker) || item.recommended_worker || '—'} />
@@ -351,11 +364,15 @@ function TraceSection({ item, trace }) {
   );
 }
 
-function TraceNode({ label, value }) {
+function TraceNode({ label, value, founderGated, testId }) {
   return (
-    <span className="px-2 py-1 border border-zinc-800 rounded flex items-center gap-1">
+    <span
+      className={`px-2 py-1 border rounded flex items-center gap-1 ${founderGated ? 'border-purple-800' : 'border-zinc-800'}`}
+      data-testid={testId}
+    >
       <Link2 className="w-3 h-3 text-zinc-700" />
       <span className="text-zinc-600">{label}:</span> <span className="text-zinc-300">{value}</span>
+      {founderGated && <ShieldAlert className="w-3 h-3 text-purple-400" />}
     </span>
   );
 }

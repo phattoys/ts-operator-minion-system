@@ -4,8 +4,8 @@ import {
   Layers, RefreshCw, AlertTriangle, CheckCircle2,
   Filter, ArrowUpDown, ShieldAlert, Inbox,
 } from 'lucide-react';
-import { listManifests } from '../lib/executionManifestApi';
-import { deriveSupportBadge, SUPPORT_BADGE_STYLE, FOUNDER_GATED_WORKERS } from '../lib/executionManifestSupport';
+import { listManifests, getTrace } from '../lib/executionManifestApi';
+import { FOUNDER_GATED_WORKERS } from '../lib/executionManifestSupport';
 
 const MANIFEST_STATUS_STYLES = {
   received: 'text-zinc-400 border-zinc-700',
@@ -24,6 +24,13 @@ function itemCounts(items) {
   const total = items.length;
   const completed = items.filter((i) => i.status === 'completed').length;
   const blocked = items.filter((i) => i.status === 'blocked' || i.status === 'needs_review').length;
+  // Approximate for the table column only -- an item's recommended_worker
+  // reflects the ORIGINAL routing decision (e.g. "jenny"), not necessarily
+  // the currently-active worker further down an auto-executed chain (e.g.
+  // once Jenny -> Rene have completed and WP Placement is now the
+  // actionable step). The Founder Action Center view below is the
+  // authoritative source -- it inspects each item's real worker chain via
+  // the trace endpoint rather than guessing from this field.
   const founderAction = items.filter(
     (i) => i.status === 'needs_review' || (i.status === 'queued' && FOUNDER_GATED_WORKERS.has(i.recommended_worker)),
   ).length;
@@ -36,6 +43,11 @@ export default function ExecutionManifestList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [view, setView] = useState('all'); // 'all' | 'founder-action'
+
+  const [founderActionRows, setFounderActionRows] = useState([]);
+  const [founderActionLoading, setFounderActionLoading] = useState(false);
+  const [founderActionError, setFounderActionError] = useState(null);
+  const [founderActionCount, setFounderActionCount] = useState(0);
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [destinationFilter, setDestinationFilter] = useState('all');
@@ -109,18 +121,57 @@ export default function ExecutionManifestList() {
     return rows;
   }, [manifests, statusFilter, sourceFilter, priorityFilter, destinationFilter, founderOnly, blockedOnly, sortBy]);
 
-  const founderActionItems = useMemo(() => {
-    const rows = [];
-    manifests.forEach((m) => {
-      (m.execution_items || []).forEach((item) => {
-        const isFounderAction = item.status === 'needs_review'
-          || (item.status === 'queued' && FOUNDER_GATED_WORKERS.has(item.recommended_worker));
-        if (isFounderAction) {
-          rows.push({ manifest: m, item });
-        }
+  // Founder Action Center: the authoritative source. Rather than guessing
+  // from an item's status/recommended_worker (which only reflect the
+  // ORIGINAL routing decision, not necessarily the currently-active step
+  // in an auto-executed chain), this inspects each item's real worker
+  // chain via the trace endpoint and surfaces any task where the backend
+  // itself says founder_action_needed === true. A Metricool item that's
+  // merely "blocked" never has a worker task at all (queueing refuses to
+  // create one for an unsupported destination), so it can never appear
+  // here unless the backend explicitly creates a founder-gated task for it.
+  const loadFounderActions = useCallback(async (manifestList) => {
+    if (manifestList.length === 0) {
+      setFounderActionRows([]);
+      setFounderActionCount(0);
+      return;
+    }
+    setFounderActionLoading(true);
+    setFounderActionError(null);
+    try {
+      const traces = await Promise.all(
+        manifestList.map((m) => getTrace(m.manifest_id).catch((err) => {
+          console.error(`Failed to load trace for ${m.manifest_id}:`, err);
+          return null;
+        })),
+      );
+      const rows = [];
+      manifestList.forEach((manifest, idx) => {
+        const trace = traces[idx];
+        if (!trace) return;
+        (trace.items || []).forEach((traceItem) => {
+          (traceItem.worker_chain || []).forEach((task) => {
+            if (task.founder_action_needed) {
+              rows.push({ manifest, traceItem, task });
+            }
+          });
+        });
       });
-    });
-    return rows;
+      setFounderActionRows(rows);
+      setFounderActionCount(rows.length);
+    } catch (err) {
+      console.error('Failed to load founder actions:', err);
+      setFounderActionError('Could not load founder actions. The Execution Manifest Layer backend may be unreachable.');
+      setFounderActionRows([]);
+    } finally {
+      setFounderActionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (manifests.length > 0) loadFounderActions(manifests);
+    else { setFounderActionRows([]); setFounderActionCount(0); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manifests]);
 
   return (
@@ -145,8 +196,8 @@ export default function ExecutionManifestList() {
           >
             <ShieldAlert className="w-3.5 h-3.5" />
             Founder Action Center
-            {founderActionItems.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-900/60 text-red-200 text-[10px]">{founderActionItems.length}</span>
+            {founderActionCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-900/60 text-red-200 text-[10px]">{founderActionCount}</span>
             )}
           </button>
           <button onClick={load} className="p-1.5 border border-zinc-800 rounded text-zinc-500 hover:text-zinc-300" data-testid="refresh-manifests">
@@ -162,7 +213,12 @@ export default function ExecutionManifestList() {
       )}
 
       {view === 'founder-action' ? (
-        <FounderActionCenter rows={founderActionItems} loading={loading} navigate={navigate} />
+        <FounderActionCenter
+          rows={founderActionRows}
+          loading={founderActionLoading}
+          error={founderActionError}
+          navigate={navigate}
+        />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 mb-4 text-xs" data-testid="manifest-filters">
@@ -289,9 +345,16 @@ function EmptyState({ manifestsExist }) {
   );
 }
 
-function FounderActionCenter({ rows, loading, navigate }) {
+function FounderActionCenter({ rows, loading, error, navigate }) {
   if (loading) {
     return <div className="text-zinc-500 text-sm py-12 text-center" data-testid="founder-action-loading">Loading founder actions...</div>;
+  }
+  if (error) {
+    return (
+      <div className="p-3 border border-red-900 bg-red-950/20 text-red-300 text-sm rounded" data-testid="founder-action-error">
+        {error}
+      </div>
+    );
   }
   if (rows.length === 0) {
     return (
@@ -303,39 +366,38 @@ function FounderActionCenter({ rows, loading, navigate }) {
   }
   return (
     <div className="space-y-3" data-testid="founder-action-list">
-      {rows.map(({ manifest, item }) => {
-        const { badge, reason } = deriveSupportBadge(item);
-        const isGatedQueued = item.status === 'queued' && FOUNDER_GATED_WORKERS.has(item.recommended_worker);
-        return (
-          <div
-            key={`${manifest.manifest_id}-${item.item_id}`}
-            className="border border-zinc-800 rounded p-4 hover:border-zinc-700 cursor-pointer"
-            onClick={() => navigate(`/execution-manifests/${manifest.manifest_id}`)}
-            data-testid={`founder-action-item-${item.item_id}`}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-zinc-200 text-sm">{item.title}</div>
-                <div className="text-zinc-600 text-xs mt-0.5">
-                  {manifest.campaign_name} · {manifest.manifest_id} · item {item.item_id}
-                </div>
+      {rows.map(({ manifest, traceItem, task }) => (
+        <div
+          key={`${manifest.manifest_id}-${traceItem.item_id}-${task.task_id}`}
+          className="border border-zinc-800 rounded p-4 hover:border-zinc-700 cursor-pointer"
+          onClick={() => navigate(`/execution-manifests/${manifest.manifest_id}`)}
+          data-testid={`founder-action-item-${traceItem.item_id}-${task.worker}`}
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-zinc-200 text-sm">{traceItem.title}</div>
+              <div className="text-zinc-600 text-xs mt-0.5">
+                {manifest.campaign_name} · {manifest.manifest_id} · item {traceItem.item_id}
               </div>
-              <span className={`px-2 py-0.5 border rounded text-xs ${SUPPORT_BADGE_STYLE[badge]}`}>{badge}</span>
             </div>
-            <div className="mt-2 text-xs text-zinc-500 flex items-center gap-2 flex-wrap">
-              <span className="flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-amber-500" />{reason}</span>
-            </div>
-            <div className="mt-2 text-xs text-zinc-600">
-              Worker: <span className="text-zinc-400">{item.recommended_worker || '—'}</span> ·
-              Destination: <span className="text-zinc-400">{item.destination}</span> ·
-              Current status: <span className="text-zinc-400">{item.status}</span> ·
-              Next action: <span className="text-zinc-400">
-                {isGatedQueued ? 'Open the item in Worker Queue and run its dry-run preview, then approve to write live' : 'Review and re-validate, or resolve manually'}
-              </span>
-            </div>
+            <span className="px-2 py-0.5 border border-purple-800 text-purple-300 rounded text-xs">{task.status}</span>
           </div>
-        );
-      })}
+          <div className="mt-2 text-xs text-zinc-500 flex items-center gap-2 flex-wrap">
+            <span className="flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3 text-amber-500" />
+              {task.worker_name || task.worker} task ({task.task_type}) is waiting on founder review — {task.next_action || 'no action description available'}.
+            </span>
+          </div>
+          <div className="mt-2 text-xs text-zinc-600">
+            Worker: <span className="text-zinc-400">{task.worker}</span> ·
+            Destination: <span className="text-zinc-400">{traceItem.destination}</span> ·
+            Task status: <span className="text-zinc-400">{task.status}</span> ·
+            Next action: <span className="text-zinc-400">
+              Open the item, run its dry-run preview if not already done, review, then approve to execute live
+            </span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
