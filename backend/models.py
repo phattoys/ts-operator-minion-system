@@ -745,3 +745,172 @@ class WpPlacementSettingsUpdate(BaseModel):
     preserve_unmapped_on_update: Optional[bool] = None
     flag_missing_cta: Optional[bool] = None
     save_placement_log: Optional[bool] = None
+
+# ================== EXECUTION MANIFEST LAYER (PHASE 1) ==================
+#
+# Bridge between final structured campaign/output packets (from TSAF or any
+# future source system) and safely routed OPS execution work. Reuses the
+# existing Worker Queue rather than replacing it -- an execution manifest
+# item, once queued, becomes an ordinary worker_tasks record with
+# source_module="execution_manifest".
+#
+# ARCHITECTURAL LAW (do not violate):
+#   TSAF creates.
+#   Execution Manifest receives and structures.
+#   OPS Execution Queue organizes.
+#   OPS operators execute.
+#   TSAF is separate from OPS. OPS girls do not directly touch TSAF.
+#
+# This layer NEVER writes to WordPress itself and NEVER grants live/publish
+# authorization. It only creates worker_tasks through the existing,
+# unmodified WP write-safety gate -- dry_run stays the default, founder
+# approval and a single-use token are still required for any live write,
+# exactly as before this layer existed.
+
+class ManifestStatus(str, Enum):
+    RECEIVED = "received"
+    VALIDATED = "validated"
+    NEEDS_REVIEW = "needs_review"
+    READY = "ready"
+    IN_PROGRESS = "in_progress"
+    PARTIALLY_COMPLETED = "partially_completed"
+    COMPLETED = "completed"
+    BLOCKED = "blocked"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+class ExecutionItemStatus(str, Enum):
+    PENDING = "pending"
+    NEEDS_REVIEW = "needs_review"
+    READY = "ready"
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    BLOCKED = "blocked"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+class DestinationLabel(str, Enum):
+    """
+    Supporting a destination label here does NOT mean the connector exists.
+    See services/execution_manifest.py:DESTINATION_SUPPORT for the actual
+    support level of each, and docs/EXECUTION_MANIFEST_SCHEMA.md for the
+    documented distinction between recognized / supported now / connector
+    unavailable / manual required / future planned.
+    """
+    WORDPRESS = "wordpress"
+    METRICOOL = "metricool"
+    FACEBOOK = "facebook"
+    INSTAGRAM = "instagram"
+    TIKTOK = "tiktok"
+    YOUTUBE_SHORTS = "youtube_shorts"
+    PINTEREST = "pinterest"
+    LINKEDIN = "linkedin"
+    EMAIL = "email"
+    BLOG = "blog"
+    GUIDE = "guide"
+    DIGITAL_PRODUCT = "digital_product"
+    HUBSPOT = "hubspot"
+    ADS = "ads"
+    MANUAL = "manual"
+
+class DestinationSupportLevel(str, Enum):
+    SUPPORTED_NOW = "supported_now"
+    CONNECTOR_UNAVAILABLE = "connector_unavailable"
+    MANUAL_REQUIRED = "manual_required"
+    UNRECOGNIZED = "unrecognized"
+
+
+class ExecutionItem(BaseModel):
+    item_id: str
+    manifest_id: str
+    sequence: int = 0
+    title: str
+    description: Optional[str] = None
+    content_type: Optional[str] = None
+    destination: str
+    channel: Optional[str] = None
+    platform: Optional[str] = None
+    execution_type: str
+    recommended_worker: Optional[str] = None
+    task_type: Optional[str] = None
+    requires_founder_approval: bool = True
+    status: str = ExecutionItemStatus.PENDING.value
+    priority: str = "normal"
+    due_at: Optional[str] = None
+    asset_refs: List[str] = Field(default_factory=list)
+    copy: Optional[str] = None
+    instructions: Optional[str] = None
+    placement: Dict[str, Any] = Field(default_factory=dict)
+    compliance_notes: Optional[str] = None
+    qa_requirements: List[str] = Field(default_factory=list)
+    dependencies: List[str] = Field(default_factory=list)
+    context: Dict[str, Any] = Field(default_factory=dict)
+    worker_task_id: Optional[str] = None
+    result: Dict[str, Any] = Field(default_factory=dict)
+    warnings: List[str] = Field(default_factory=list)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ExecutionManifestAsset(BaseModel):
+    asset_id: str
+    type: Optional[str] = None
+    url: Optional[str] = None
+    alt_text: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ExecutionManifest(BaseModel):
+    manifest_id: Optional[str] = None  # server-generated if not supplied
+    schema_version: str
+    source_system: str
+    source_packet_id: str
+    source_packet_type: Optional[str] = None
+    campaign_id: Optional[str] = None
+    campaign_name: Optional[str] = None
+    brand_id: Optional[str] = None
+    brand_name: Optional[str] = None
+    created_at: Optional[str] = None
+    received_at: Optional[str] = None
+    status: str = ManifestStatus.RECEIVED.value
+    priority: str = "normal"
+    due_at: Optional[str] = None
+    created_by: Optional[str] = None
+    notes: Optional[str] = None
+    execution_items: List[ExecutionItem] = Field(default_factory=list)
+    assets: List[ExecutionManifestAsset] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ExecutionManifestCreateRequest(BaseModel):
+    """
+    Wire model for POST /api/execution-manifests. Deliberately does NOT
+    accept execution_mode, approval_token, or any WordPress write-safety
+    field anywhere -- those belong exclusively to the existing WP
+    write-safety gate and are never settable through a manifest. See
+    services/execution_manifest.validate_manifest() for the hard rejection
+    of any such field found in item.context.
+    """
+    manifest_id: Optional[str] = None
+    schema_version: str
+    source_system: str
+    source_packet_id: str
+    source_packet_type: Optional[str] = None
+    campaign_id: Optional[str] = None
+    campaign_name: Optional[str] = None
+    brand_id: Optional[str] = None
+    brand_name: Optional[str] = None
+    priority: str = "normal"
+    due_at: Optional[str] = None
+    created_by: Optional[str] = None
+    notes: Optional[str] = None
+    execution_items: List[ExecutionItem]
+    assets: List[ExecutionManifestAsset] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class QueueItemRequest(BaseModel):
+    """Optional override context for a single item queue request. No
+    execution_mode/approval_token fields -- see ExecutionManifestCreateRequest."""
+    notes: Optional[str] = None

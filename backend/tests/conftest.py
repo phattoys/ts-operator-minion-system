@@ -86,4 +86,7 @@ def mock_db(monkeypatch):
     import routes.worker_queue as worker_queue_route
     monkeypatch.setattr(worker_queue_route, "db", fake_db)
 
+    import services.execution_manifest as execution_manifest_svc
+    monkeypatch.setattr(execution_manifest_svc, "db", fake_db)
+
     return fake_db

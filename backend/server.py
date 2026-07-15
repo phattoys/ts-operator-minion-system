@@ -17,6 +17,7 @@ from routes.field_listing import field_listing_router
 from routes.spine import spine_router
 from routes.worker_queue import worker_queue_router
 from routes.command_center import command_center_router
+from routes.execution_manifest import execution_manifest_router
 
 app = FastAPI(title="TS Operator Minion", version="2.8")
 
@@ -35,6 +36,7 @@ app.include_router(field_listing_router)
 app.include_router(spine_router)
 app.include_router(worker_queue_router)
 app.include_router(command_center_router)
+app.include_router(execution_manifest_router)
 app.include_router(shared_router)
 
 # CORS
@@ -122,6 +124,13 @@ async def startup_event():
         await db.worker_activity_log.create_index("id", unique=True)
         await db.worker_activity_log.create_index("task_id")
         await db.worker_activity_log.create_index("timestamp")
+
+        # Execution Manifest Layer indexes
+        await db.execution_manifests.create_index("manifest_id", unique=True)
+        await db.execution_manifests.create_index("status")
+        await db.execution_manifests.create_index("source_packet_id")
+        await db.execution_manifests.create_index("campaign_id")
+        await db.execution_manifests.create_index("created_at")
         
         logger.info("Database indexes ensured")
     except Exception as e:

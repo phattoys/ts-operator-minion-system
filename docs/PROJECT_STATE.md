@@ -100,6 +100,49 @@ write-safety gate or worker-chain verification work.
 
 ---
 
+### Execution Manifest Layer
+
+- **Status: PHASE 1 IN DEVELOPMENT**
+- **Source commit (Phase 1 backend foundation):** see change log below
+
+**Purpose:** Bridge final structured campaign/output packets into safely
+routed OPS execution work.
+
+**Architecture:**
+```
+TSAF creates.
+Execution Manifest receives and structures.
+OPS Execution Queue organizes.
+OPS operators execute.
+```
+
+Phase 1 delivers the smallest complete backend foundation: receive a
+manifest, validate it, store it, show execution items and destination
+instructions, convert approved executable items into existing OPS worker
+tasks (reusing the Worker Queue rather than replacing it), and preserve
+traceability from source packet → manifest → execution item → worker task
+→ result/status.
+
+Not built in Phase 1 (explicitly out of scope): external Metricool,
+Klaviyo, HubSpot, email, or social API integrations; TSAF itself; order
+fulfillment or vendor CSV functionality; any UI/dashboard.
+
+This layer never calls the WordPress client directly and never issues or
+consumes a WP approval token — it only ever creates ordinary
+`worker_tasks` through the existing, unmodified Worker Queue, which routes
+through the existing, unmodified Jenny → Rene → WP Placement chain and the
+existing, unmodified WP write-safety gate. See
+`docs/EXECUTION_MANIFEST_SCHEMA.md` for the full schema, destination
+support table, and routing rules.
+
+**Known remaining issue (pre-existing, not introduced or fixed here):**
+`_execute_wp_update()` calls `int(wp_page_id)`, which can crash on
+non-numeric mock WordPress page IDs. Not reached by the Phase 1 proof test
+(which uses a realistic numeric WP page ID); tracked here as a standing
+item, same as recorded under the worker-chain entry above.
+
+---
+
 ## OPS Handoff Architecture
 
 ```
@@ -146,3 +189,11 @@ table reflects `services/worker_queue.py` as of `eb52b3200aa7309fc29ef53e4ce6cb4
 - **2026-07-14** — Jenny → Rene → WP Placement worker chain proven
   end-to-end and marked KNOWN-GOOD using WordPress Page ID 354950.
   Commit `ee12901dcfb5759a0372b3e920adf19f42781e1e`.
+- **2026-07-14** — Execution Manifest Layer Phase 1 backend foundation
+  built: data models, validation, deterministic routing, queueing into
+  the existing Worker Queue, traceability, and API endpoints. Proven via
+  automated tests, including the required in-process handoff: manifest →
+  WordPress update item → Jenny task → Rene → WP Placement (remains
+  founder-gated) → dry-run/approval/mock-write. Status: PHASE 1 IN
+  DEVELOPMENT (backend only; no UI, no external connectors, no TSAF, no
+  vendor CSV in this phase). Branch `ops/execution-manifest-phase-1-20260714`.
