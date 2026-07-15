@@ -143,6 +143,61 @@ item, same as recorded under the worker-chain entry above.
 
 ---
 
+### Execution Manifest Layer — Phase 1
+
+- **Status: KNOWN-GOOD**
+- **Verified source commit:** `7390c00edb0cfac2394fa10401221bfdd57afb66`
+- **Real-environment verification date:** 2026-07-14
+- **Verification manifest ID:** `man-verify-20260714`
+- **Campaign name:** TS Execution Manifest Phase 1 Verification — 2026-07-14
+
+**Verified facts:**
+- Real MongoDB connectivity confirmed.
+- Manifest persisted successfully in real database.
+- Manifest could be fetched back by ID.
+- Stored data matched submitted data.
+- Manifest survived backend restart.
+- WordPress execution item validated as ready.
+- WordPress execution item routed deterministically to Jenny using wp_content_draft.
+- Jenny task completed successfully.
+- Rene task was auto-created and completed QA successfully.
+- WP Placement task was auto-created.
+- WP Placement remained queued.
+- WP Placement did not auto-execute.
+- WP Placement remained founder-gated.
+- No real WordPress write occurred during this Phase 1 verification.
+- Duplicate queue request did not create a duplicate Jenny task.
+- Exactly one Jenny worker task existed for the execution item.
+- worker_task_id was stored back on the manifest execution item.
+- Metricool item remained visible and blocked.
+- Metricool item did not create a fake worker task.
+- Unsupported connector behavior was preserved honestly.
+- Trace endpoint showed manifest → execution item → worker task → status → result → warnings.
+- IDs aligned correctly across traceability chain.
+- Forbidden manifest context fields execution_mode and approval_token were rejected.
+- The Execution Manifest Layer could not bypass the existing WordPress write-safety gate.
+- Real persistence remained intact after backend restart.
+- 59 required regression tests passed.
+- 1 legitimate conditional test was skipped.
+- 0 required regression tests failed.
+- Protected baseline remained untouched.
+
+> **Protection rule:** DO NOT redesign, bypass, weaken, remove, or
+> silently replace the KNOWN-GOOD Execution Manifest Phase 1 behavior
+> without explicit architectural approval and a new verification cycle.
+
+**Remaining known risks:**
+1. `_execute_wp_update()` still calls `int(wp_page_id)`, which can fail on
+   non-numeric mock WordPress page IDs. This is a pre-existing
+   update-path issue and was not reached or repaired during Phase 1
+   verification.
+2. `mongomock-motor` and `pytest-asyncio` were installed locally for test
+   execution but are not yet recorded in `requirements.txt`.
+3. Verification data remains intentionally stored in the real database
+   as labeled proof.
+
+---
+
 ## OPS Handoff Architecture
 
 ```
@@ -197,3 +252,6 @@ table reflects `services/worker_queue.py` as of `eb52b3200aa7309fc29ef53e4ce6cb4
   founder-gated) → dry-run/approval/mock-write. Status: PHASE 1 IN
   DEVELOPMENT (backend only; no UI, no external connectors, no TSAF, no
   vendor CSV in this phase). Branch `ops/execution-manifest-phase-1-20260714`.
+- **2026-07-14** — Execution Manifest Layer Phase 1 real-environment
+  verified and marked KNOWN-GOOD. Commit
+  `7390c00edb0cfac2394fa10401221bfdd57afb66`.
