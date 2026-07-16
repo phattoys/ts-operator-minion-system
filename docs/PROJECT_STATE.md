@@ -200,7 +200,45 @@ item, same as recorded under the worker-chain entry above.
 
 ### Execution Manifest Layer Phase 2 — Founder Workspace
 
-- **Status: REPAIR IN PROGRESS**
+- **Status: KNOWN-GOOD**
+- **Verified source commit:** `847bcc463090ee9acdc9006a89ac8e373969daf4`
+- **Real-browser verification date:** 2026-07-15
+- **Verification manifest:** `man-verify-phase2-browser-20260715`
+
+**Verified facts:**
+- Manifest list rendered successfully in the real browser.
+- Manifest detail rendered successfully.
+- WordPress execution item displayed correctly.
+- Metricool execution item remained visible and blocked.
+- Metricool showed FUTURE CONNECTOR PLANNED / connector unavailable behavior.
+- Metricool had no fake worker task.
+- Metricool showed no Queue button.
+- Full trace displayed:
+  Manifest → Execution Item → Jenny completed → Rene completed → WP Placement queued.
+- Founder Action Center displayed the downstream queued WP Placement task.
+- WP Placement showed founder_action_needed=true.
+- WP Placement remained non-auto-executing.
+- WP Placement next action preserved the dry-run preview and approval flow.
+- No one-click live publish bypass existed.
+- Metricool was excluded from Founder Action Center.
+- Queue controls behaved honestly.
+- No real WordPress write occurred.
+- API and browser behavior matched.
+- No application source files were modified during final verification.
+- Protected baseline remained untouched.
+
+> **Protection rule:** DO NOT redesign, bypass, weaken, remove, or
+> silently replace the KNOWN-GOOD Execution Manifest Phase 2 founder
+> workspace behavior without explicit architectural approval and a new
+> real-browser verification cycle.
+
+**Environment note:** the Emergent pod may start with gitignored `.env`
+files absent and an empty MongoDB. For review-only verification data, use
+the explicit, idempotent script:
+```
+python3 /app/scripts/seed_verify_manifest.py
+```
+Do not add automatic production startup seeding.
 
 **Purpose:** Founder-facing review and execution workspace connected to
 the known-good Phase 1 backend.
@@ -241,38 +279,13 @@ file that doesn't match their real CJS entry point. Fixed via a
 (as bundled) doesn't provide but react-router v7 needs. This affects test
 tooling only — production builds/webpack were already unaffected.
 
-**Real-browser review finding (repair in progress):** two explicit Phase
-2 requirements were found not met in real-browser review:
-1. The trace API/UI showed only the initial Jenny task, not the full
-   Jenny → Rene → WP Placement chain that actually exists.
-2. The Founder Action Center never surfaced the downstream founder-gated
-   WP Placement task.
-
-**Root cause:** `queue_execution_item()` only ever linked the execution
-item back to the FIRST task it created (Jenny). Because Jenny and Rene
-are `auto_execute=True`, the entire chain (Jenny → Rene → WP Placement)
-runs synchronously inside that single call via the existing
-`_route_next()` routing — by the time control returns, WP Placement
-already exists and is correctly `queued`/`founder_action_needed=True`,
-but nothing had ever looked past the one task ID stored on the item.
-
-**Repair:** `services/execution_manifest.py` gained
-`get_worker_chain(item_id)`, which aggregates all `worker_tasks` sharing
-an item's `source_item_id` (exactly how `_route_next()` already finds
-"the next step"), ordered deterministically (Jenny → Rene → Sam → WP
-Placement, then creation time). `get_trace()` now returns this as
-`worker_chain` per item, in addition to the original singular fields
-(`worker`/`task_status`/`task_result`/`task_warnings`/`worker_task_id`)
-repointed at the chain's current/last entry for backward compatibility.
-`queue_execution_item()` now derives the execution item's persisted
-`status` from the chain's current step, not just the one task it directly
-created. The frontend's Founder Action Center now inspects real worker
-chains (via the repaired trace endpoint) instead of guessing from an
-item's `status`/`recommended_worker`; the detail view's trace section
-renders the full chain. No worker-queue logic was touched, redesigned, or
-duplicated — this only reads what already exists. WordPress safety
-(dry-run default, founder gating, approval token, single/payload/scope
-binding, draft default, publish authorization) is completely untouched.
+**Repair history:** an earlier real-browser review found the trace
+API/UI showed only the initial Jenny task, and the Founder Action Center
+never surfaced the downstream founder-gated WP Placement task. Root
+cause and fix are recorded in the change log below (commit `847bcc4`).
+WordPress safety (dry-run default, founder gating, approval token,
+single/payload/scope binding, draft default, publish authorization) was
+never touched, in the original build or the repair.
 
 ---
 
@@ -350,3 +363,6 @@ table reflects `services/worker_queue.py` as of `eb52b3200aa7309fc29ef53e4ce6cb4
   by both the detail view's trace section and the Founder Action Center.
   No worker-queue redesign, no WordPress-safety change. Status: REPAIR IN
   PROGRESS pending real-browser re-review.
+- **2026-07-15** — Execution Manifest Layer Phase 2 repaired,
+  real-browser verified, and marked KNOWN-GOOD. Commit
+  `847bcc463090ee9acdc9006a89ac8e373969daf4`.
