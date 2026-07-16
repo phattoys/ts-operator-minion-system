@@ -23,6 +23,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "ts_ops_write_safety_test")
 os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.setdefault("ADMIN_PASSWORD", "test-password")
+os.environ.setdefault("EXECUTION_MANIFEST_INTAKE_SECRET", "test-intake-secret-do-not-use-in-prod")
 
 # ---- Stub the unavailable emergentintegrations dependency ----
 if "emergentintegrations" not in sys.modules:
@@ -88,5 +89,8 @@ def mock_db(monkeypatch):
 
     import services.execution_manifest as execution_manifest_svc
     monkeypatch.setattr(execution_manifest_svc, "db", fake_db)
+
+    import services.execution_manifest_intake as execution_manifest_intake_svc
+    monkeypatch.setattr(execution_manifest_intake_svc, "db", fake_db)
 
     return fake_db

@@ -914,3 +914,110 @@ class QueueItemRequest(BaseModel):
     """Optional override context for a single item queue request. No
     execution_mode/approval_token fields -- see ExecutionManifestCreateRequest."""
     notes: Optional[str] = None
+
+
+# ================== EXECUTION MANIFEST INTAKE LAYER (PHASE 3) ==================
+#
+# Intake/transport gateway: lets a finished TSAF campaign packet (or another
+# authorized source) enter OPS as a structured Execution Manifest without a
+# human rebuilding it manually. This is the OPS *receiving* side only --
+# it does not build or modify TSAF, and does not claim a live TSAF
+# connection exists until one is actually configured and verified.
+#
+# The nested `manifest` field always uses the existing, unmodified Phase 1
+# ExecutionManifest schema -- this layer creates no second competing
+# manifest schema. See services/execution_manifest_intake.py.
+#
+# NO AUTOMATIC EXECUTION: successful intake creates a manifest via the
+# existing Phase 1 create_manifest() only. It never validates+queues,
+# never executes Jenny/Rene/WP Placement, never issues a WP approval
+# token, never writes to WordPress or any connector. The founder still
+# reviews in the existing Phase 2 workspace.
+
+class IntakeSourceSystem(str, Enum):
+    TSAF = "tsaf"
+    MANUAL = "manual"
+    API = "api"
+    IMPORT = "import"
+    UNKNOWN = "unknown"
+    # A recognized source does NOT automatically mean trusted -- trust is
+    # established solely by authentication_status on the receipt, never by
+    # this label.
+
+class ReceiptStatus(str, Enum):
+    RECEIVED = "received"
+    AUTHENTICATED = "authenticated"
+    REJECTED = "rejected"
+    DUPLICATE = "duplicate"
+    QUARANTINED = "quarantined"
+    VALIDATED = "validated"
+    ACCEPTED = "accepted"
+    FAILED = "failed"
+
+
+class InboundPacketAsset(BaseModel):
+    """
+    Phase 3 accepts and stores asset METADATA/REFERENCES ONLY. No binary
+    storage, ZIP extraction, media editing, or CDN upload in this phase.
+    """
+    asset_id: str
+    filename: Optional[str] = None
+    type: Optional[str] = None
+    mime_type: Optional[str] = None
+    dimensions: Optional[str] = None
+    url: Optional[str] = None
+    path: Optional[str] = None
+    checksum: Optional[str] = None
+    destination: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class InboundPacketEnvelope(BaseModel):
+    """
+    Wire model for both intake paths (/receive and /manual). `manifest` is
+    a raw dict validated against the existing Phase 1 schema by
+    services/execution_manifest.validate_manifest() -- never a separate
+    schema.
+    """
+    packet_id: str
+    packet_version: str = "1.0"
+    source_system: str
+    source_environment: Optional[str] = None
+    source_packet_type: Optional[str] = None
+    source_packet_id: Optional[str] = None
+    source_created_at: Optional[str] = None
+    sent_at: Optional[str] = None
+    sender_id: Optional[str] = None
+    brand_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    campaign_name: Optional[str] = None
+    manifest: Dict[str, Any]
+    asset_index: List[InboundPacketAsset] = Field(default_factory=list)
+    packet_location: Optional[str] = None
+    packet_checksum: Optional[str] = None
+    idempotency_key: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ManualIntakeRequest(BaseModel):
+    """POST /api/execution-manifest-intake/manual body -- founder-session only."""
+    envelope: InboundPacketEnvelope
+
+
+class ExecutionManifestReceipt(BaseModel):
+    receipt_id: str
+    packet_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    source_system: str
+    received_at: str
+    authentication_status: str
+    checksum_status: str
+    schema_status: str
+    manifest_id: Optional[str] = None
+    status: str = ReceiptStatus.RECEIVED.value
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    raw_packet_hash: Optional[str] = None
+    received_by: Optional[str] = None
+    transport: str  # "server_to_server" | "manual"
+    metadata: Dict[str, Any] = Field(default_factory=dict)

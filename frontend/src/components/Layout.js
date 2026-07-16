@@ -38,6 +38,7 @@ export default function Layout({ children }) {
 
   const opsItems = [
     { to: '/execution-manifests', icon: Layers, label: 'Execution Manifests' },
+    { to: '/execution-manifests/intake', icon: FileText, label: 'Manifest Intake' },
   ];
 
   const toolItems = [

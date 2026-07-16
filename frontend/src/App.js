@@ -32,6 +32,7 @@ import FieldListingBatch from './pages/FieldListingBatch';
 import ExecutionSpine from './pages/ExecutionSpine';
 import ExecutionManifestList from './pages/ExecutionManifestList';
 import ExecutionManifestDetail from './pages/ExecutionManifestDetail';
+import ExecutionManifestIntake from './pages/ExecutionManifestIntake';
 import './App.css';
 
 function ProtectedRoute({ children }) {
@@ -158,6 +159,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ExecutionManifestList />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/execution-manifests/intake" 
+        element={
+          <ProtectedRoute>
+            <ExecutionManifestIntake />
           </ProtectedRoute>
         } 
       />

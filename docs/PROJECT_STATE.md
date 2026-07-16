@@ -289,6 +289,52 @@ never touched, in the original build or the repair.
 
 ---
 
+### Execution Manifest Phase 3 — Intake/Transport
+
+- **Status: IN DEVELOPMENT**
+
+**Purpose:** Receive authenticated machine-readable campaign packets and
+convert them into founder-reviewable Execution Manifests without
+automatic execution.
+
+**Architecture:**
+```
+TSAF creates.
+Execution Manifest receives and structures.
+OPS Execution Queue organizes.
+OPS operators execute.
+```
+
+Adds two controlled intake paths: `POST /api/execution-manifest-intake/receive`
+(authenticated server-to-server HMAC intake, for future TSAF delivery —
+no live TSAF connection is claimed or configured) and
+`POST /api/execution-manifest-intake/manual` (founder-session paste/upload
+JSON, for testing/recovery/manual handoff). Both create manifests
+exclusively through the existing, unmodified Phase 1
+`create_manifest()`/`validate_manifest()` — no second manifest schema, no
+duplicated validation or routing logic. Neither path queues a worker,
+executes Jenny/Rene/WP Placement, issues a WP approval token, or writes
+to WordPress or any connector — the founder still reviews and queues in
+the existing Phase 2 workspace.
+
+Frontend: `/execution-manifests/intake` — paste/upload JSON with a
+local, readability-only preview, submit to the real manual-intake API,
+see the resulting receipt (accepted/rejected/quarantined, errors,
+warnings, link to the manifest), plus an Intake Receipts list/detail
+view with status/source/transport filters.
+
+See `docs/EXECUTION_MANIFEST_INTAKE.md` for the full inbound envelope,
+HMAC signing process, checksum process, idempotency behavior, quarantine
+rules, receipt model, asset-metadata boundary, ZIP/binary boundary
+(explicitly future work, not built), and environment variables.
+
+Not built in Phase 3 (explicitly out of scope, per instruction):
+Metricool/Klaviyo/HubSpot/social publishing/vendor CSV/order-fulfillment
+work, binary asset storage, ZIP extraction, media editing, CDN upload, a
+live TSAF connection.
+
+---
+
 ## OPS Handoff Architecture
 
 ```
@@ -301,9 +347,10 @@ OPS operators execute.
 - TSAF is separate from OPS.
 - OPS girls do not directly touch TSAF.
 - TSAF currently only has product/category visibility from the website.
-- The Execution Manifest Layer does not exist in this repository yet
-  (confirmed by repository audit — no code, no models, no stub). It is
-  planned, not implemented.
+- The Execution Manifest Layer now exists in this repository (Phases 1-3:
+  backend foundation, founder workspace, and intake/transport). It
+  remains a receiving/structuring layer only — it does not build or
+  modify TSAF, and no live TSAF connection is claimed or configured.
 
 ---
 
@@ -366,3 +413,18 @@ table reflects `services/worker_queue.py` as of `eb52b3200aa7309fc29ef53e4ce6cb4
 - **2026-07-15** — Execution Manifest Layer Phase 2 repaired,
   real-browser verified, and marked KNOWN-GOOD. Commit
   `847bcc463090ee9acdc9006a89ac8e373969daf4`.
+- **2026-07-16** — Execution Manifest Phase 3 (Intake/Transport) built:
+  authenticated server-to-server HMAC intake (`/receive`) and
+  founder-session manual intake (`/manual`), both creating manifests
+  exclusively through the existing Phase 1 functions; SHA-256 checksum
+  verification; mandatory idempotency (duplicate `idempotency_key` returns
+  the original receipt; same `packet_id` with a different payload is
+  quarantined as a conflict); quarantine/reject rules including inherited
+  rejection of manifest `context.execution_mode`/`context.approval_token`
+  via the existing Phase 1 validator; `execution_manifest_receipts`
+  audit collection; receipt↔manifest traceability (backward compatible —
+  no `receipt_id` required on legacy manifests); a founder-facing
+  `/execution-manifests/intake` workspace (paste/upload JSON, local
+  readability-only preview, submit, receipt result, Intake Receipts
+  list/detail). No worker task is ever created and no WordPress write
+  ever occurs as a result of intake. Status: IN DEVELOPMENT.

@@ -160,6 +160,16 @@ export default function ExecutionManifestDetail() {
               {manifest.due_at && <span>Due: {new Date(manifest.due_at).toLocaleDateString()}</span>}
             </div>
             {manifest.notes && <div className="text-zinc-500 text-xs mt-2">Notes: {manifest.notes}</div>}
+            {manifest.intake_receipt_id && (
+              <div className="text-zinc-600 text-xs mt-2 flex items-center gap-3 flex-wrap" data-testid="manifest-intake-origin">
+                <span className="text-zinc-500">Intake origin:</span>
+                <span>Receipt {manifest.intake_receipt_id}</span>
+                <span>Packet {manifest.intake_packet_id}</span>
+                <span>{manifest.intake_source_system}</span>
+                <span>{manifest.intake_transport}</span>
+                {manifest.intake_received_at && <span>{new Date(manifest.intake_received_at).toLocaleString()}</span>}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button

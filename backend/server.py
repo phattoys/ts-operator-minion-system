@@ -18,6 +18,7 @@ from routes.spine import spine_router
 from routes.worker_queue import worker_queue_router
 from routes.command_center import command_center_router
 from routes.execution_manifest import execution_manifest_router
+from routes.execution_manifest_intake import intake_router
 
 app = FastAPI(title="TS Operator Minion", version="2.8")
 
@@ -37,6 +38,7 @@ app.include_router(spine_router)
 app.include_router(worker_queue_router)
 app.include_router(command_center_router)
 app.include_router(execution_manifest_router)
+app.include_router(intake_router)
 app.include_router(shared_router)
 
 # CORS
@@ -131,6 +133,19 @@ async def startup_event():
         await db.execution_manifests.create_index("source_packet_id")
         await db.execution_manifests.create_index("campaign_id")
         await db.execution_manifests.create_index("created_at")
+
+        # Execution Manifest Intake (Phase 3) indexes.
+        # idempotency_key and packet_id are sparse-unique: legacy/manual
+        # records may have null values for one or both, and Mongo's sparse
+        # index option means multiple documents with a missing field don't
+        # collide on the unique constraint -- required since not every
+        # receipt necessarily supplies both.
+        await db.execution_manifest_receipts.create_index("receipt_id", unique=True)
+        await db.execution_manifest_receipts.create_index("idempotency_key", unique=True, sparse=True)
+        await db.execution_manifest_receipts.create_index("packet_id", sparse=True)
+        await db.execution_manifest_receipts.create_index("manifest_id", sparse=True)
+        await db.execution_manifest_receipts.create_index("received_at")
+        await db.execution_manifest_receipts.create_index("status")
         
         logger.info("Database indexes ensured")
     except Exception as e:
