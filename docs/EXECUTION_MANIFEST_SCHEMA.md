@@ -73,9 +73,9 @@ existed.
 | `asset_refs` | list of string | Must all exist in the manifest's `assets` index. |
 | `copy` | string | Final, ready-to-use content, if the source system already produced it. |
 | `instructions` | string | Instructions for content generation, if `copy` isn't already final. |
-| `placement` | object | Destination-specific placement info, e.g. `{page_id, wp_page_id, insert_after, insert_before, publication_mode}`. |
+| `placement` | object | Destination-specific placement info. For `content_draft`/`page_update`: `{page_id, wp_page_id, insert_after, insert_before, publication_mode}`. For `page_create` (see below): `{slug, page_type, template_id, hero_headline, subheadline, intro, body_section_1, body_section_2, body_section_3, cta_text, cta_url, related_links, seo_title, meta_description, publication_mode}`. |
 | `compliance_notes` | string | Optional. |
-| `qa_requirements` | list of string | Optional. |
+| `qa_requirements` | list of string | Optional. Convention strings Rene's WP content QA (`services/worker_queue._rene_qa_wp_content`) understands: `cta_required`, `min_internal_links:N`, `internal_only`, `required_sections:key1,key2`, `seo_required`. Unrecognized strings produce a warning, never a failure — different pages can declare different requirements; none are assumed by default. Duplicate internal-link URLs and basic malformed-href detection run unconditionally regardless of what's declared here. |
 | `dependencies` | list of string | Other `item_id`s that must complete first. Validated for existence and cycles. |
 | `context` | object | Free-form, merged into the created worker task's context. **May never contain `execution_mode` or `approval_token`** — see WordPress Safety Boundaries below. |
 | `worker_task_id` | string | Set once queued. |
@@ -129,8 +129,10 @@ of truth for this table; keep this document in sync with it.
    entirely unmodified and unaware this task originated from a manifest.
 
 2. **WordPress new page placement** — `destination=wordpress`,
-   `execution_type=page_create` → WP Placement (`wp_draft`), the existing
-   create path. Founder gating and the write-safety gate preserved.
+   `execution_type=page_create` → WP Placement (`wp_draft`). Built
+   directly from the item's own `copy`/`title`/`placement` fields (see
+   `placement` row above) — no pre-existing Page Ops record required.
+   Founder gating and the write-safety gate preserved and unchanged.
 
 3. **Destination pack** — `execution_type=destination_pack` (any
    destination) → Sam (`destination_pack`).

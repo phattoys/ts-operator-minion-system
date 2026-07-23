@@ -93,4 +93,7 @@ def mock_db(monkeypatch):
     import services.execution_manifest_intake as execution_manifest_intake_svc
     monkeypatch.setattr(execution_manifest_intake_svc, "db", fake_db)
 
+    import services.menu_mapper as menu_mapper_svc
+    monkeypatch.setattr(menu_mapper_svc, "db", fake_db)
+
     return fake_db

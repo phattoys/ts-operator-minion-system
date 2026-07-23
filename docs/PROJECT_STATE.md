@@ -335,6 +335,51 @@ live TSAF connection.
 
 ---
 
+### OPS Practical Completion — Page Production
+
+- **Status: BUILT** (pending real-environment/real-browser verification)
+
+Following the OPS Practical Completion Audit (2026-07-22), one narrow
+build closing the single defect the audit found: a `page_create`
+execution item's own `copy`/`placement` fields now actually build the new
+page — previously the create path silently required a pre-existing Page
+Ops record and discarded the manifest's own content.
+
+Three changes, all reusing existing infrastructure (no second WordPress
+creation system, no worker redesign, no weakening of the write-safety
+gate):
+
+1. **Manifest-sourced page_create** — `services/worker_queue.py` gained
+   `_execute_wp_create_from_manifest()`, used only when a task's context
+   carries `manifest_page_data` (built by
+   `services/execution_manifest.queue_execution_item()` for `page_create`
+   items). Reuses the same templates, WordPress client, dry-run/approval
+   flow, and placement logging as the original Page-Ops-sourced create
+   path, which is otherwise completely unchanged and still handles every
+   non-manifest caller exactly as before. Manifest `publication_mode` is
+   still only ever an *intent* — it never itself authorizes a live write
+   or a publish; the existing approval-token flow is untouched.
+2. **Extended Rene WP content QA** — `_rene_qa_wp_content()` now checks,
+   beyond the original presence/length/script-tag/target-ID basics:
+   duplicate internal-link URLs and basic malformed-href detection
+   (always on), plus CTA presence, minimum internal-link count,
+   internal-only enforcement, required section markers, and SEO
+   title/meta-description warnings — all opt-in per page via the manifest
+   item's own `qa_requirements` (see `docs/EXECUTION_MANIFEST_SCHEMA.md`).
+   No page is forced into another page's requirements.
+3. **Maintainable internal-link map** — `services/menu_mapper.py`'s
+   hardcoded link-suggestion tuples became a structured
+   `INTERNAL_LINK_MAP` (source slug, destination slug, anchor label,
+   reason, required/optional), plus a generic same-`page_family`/same-
+   `district_or_pillar` fallback so new pages get real suggestions
+   without needing to be pre-registered.
+
+Not built (explicitly out of scope for this narrow completion, per
+instruction): Feed MVP, any avatar work, connectors, vendor CSV, order
+fulfillment, a broken-link crawler.
+
+---
+
 ## OPS Handoff Architecture
 
 ```
@@ -428,3 +473,17 @@ table reflects `services/worker_queue.py` as of `eb52b3200aa7309fc29ef53e4ce6cb4
   readability-only preview, submit, receipt result, Intake Receipts
   list/detail). No worker task is ever created and no WordPress write
   ever occurs as a result of intake. Status: IN DEVELOPMENT.
+- **2026-07-22** — OPS Practical Completion Audit performed (read-only;
+  no code changed). Identified one narrow defect blocking real website
+  backlog work: manifest `page_create` items silently required a
+  pre-existing Page Ops record and discarded their own content. One
+  narrow completion build followed: manifest-sourced page creation
+  (`_execute_wp_create_from_manifest`, reusing all existing
+  templates/client/safety-gate/logging), extended Rene WP content QA
+  (requirement-driven: CTA, internal-link count, internal-only,
+  required sections, SEO warnings, plus always-on duplicate-link and
+  malformed-href checks), and a maintainable `INTERNAL_LINK_MAP` in
+  `services/menu_mapper.py` with a same-family/same-district
+  auto-suggestion fallback for new pages. All KNOWN-GOOD components
+  (write-safety gate, worker chain, Phases 1-3) preserved and re-verified
+  by full regression. Branch `ops/page-production-completion-20260722`.

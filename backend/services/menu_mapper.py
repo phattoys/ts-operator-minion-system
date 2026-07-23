@@ -208,41 +208,167 @@ async def generate_menu_map() -> dict:
     }
 
 
+# ---- Internal Link Map ----
+#
+# Maintainable, curated internal-link recommendations. Each row is one
+# source -> destination relationship. This is a recommendation list
+# (Rene enforces minimum counts / duplicate detection on whatever
+# related_links a page actually ends up with -- see
+# services/worker_queue._rene_qa_wp_content -- this map is only the
+# source of *suggestions*, not enforcement).
+#
+# Fields:
+#   source_slug       - the page this suggestion applies to
+#   destination_slug   - the recommended internal link target
+#   anchor_label        - suggested link text (falls back to the live
+#                          page's own page_name at generation time if
+#                          the destination page's name differs)
+#   reason              - why this link makes sense (shown to the founder)
+#   required            - True if this specific link should be treated as
+#                          a hard requirement rather than a suggestion
+#                          (currently none are -- existing entries are all
+#                          recommendations, matching prior behavior)
+#
+# Extend this list with real slugs as the 14-page backlog is placed.
+# Do not invent placeholder slugs here -- add real ones as pages exist.
+INTERNAL_LINK_MAP = [
+    {"source_slug": "about", "destination_slug": "who-we-serve", "anchor_label": "Who We Serve", "reason": "Brand exploration path", "required": False},
+    {"source_slug": "about", "destination_slug": "long-beach-adult-boutique", "anchor_label": "Long Beach Adult Boutique", "reason": "Brand exploration path", "required": False},
+    {"source_slug": "about", "destination_slug": "customer-stories", "anchor_label": "Customer Stories", "reason": "Brand exploration path", "required": False},
+    {"source_slug": "long-beach-adult-boutique", "destination_slug": "long-beach-lingerie", "anchor_label": "Long Beach Lingerie", "reason": "Local discovery path", "required": False},
+    {"source_slug": "long-beach-adult-boutique", "destination_slug": "long-beach-sexual-wellness", "anchor_label": "Long Beach Sexual Wellness", "reason": "Local discovery path", "required": False},
+    {"source_slug": "long-beach-adult-boutique", "destination_slug": "beginner-friendly-shopping", "anchor_label": "Beginner-Friendly Shopping", "reason": "Local discovery path", "required": False},
+    {"source_slug": "long-beach-sexual-wellness", "destination_slug": "body-safe-shame-free", "anchor_label": "Body-Safe, Shame-Free", "reason": "Wellness exploration", "required": False},
+    {"source_slug": "long-beach-sexual-wellness", "destination_slug": "wellness-district", "anchor_label": "Wellness District", "reason": "Wellness exploration", "required": False},
+    {"source_slug": "long-beach-sexual-wellness", "destination_slug": "beginner-friendly-shopping", "anchor_label": "Beginner-Friendly Shopping", "reason": "Wellness exploration", "required": False},
+    {"source_slug": "long-beach-lingerie", "destination_slug": "pleasure-district", "anchor_label": "Pleasure District", "reason": "Lingerie to boutique", "required": False},
+    {"source_slug": "long-beach-lingerie", "destination_slug": "long-beach-adult-boutique", "anchor_label": "Long Beach Adult Boutique", "reason": "Lingerie to boutique", "required": False},
+    {"source_slug": "beginner-friendly-shopping", "destination_slug": "body-safe-shame-free", "anchor_label": "Body-Safe, Shame-Free", "reason": "Beginner trust path", "required": False},
+    {"source_slug": "beginner-friendly-shopping", "destination_slug": "who-we-serve", "anchor_label": "Who We Serve", "reason": "Beginner trust path", "required": False},
+    {"source_slug": "beginner-friendly-shopping", "destination_slug": "faq", "anchor_label": "FAQ", "reason": "Beginner trust path", "required": False},
+    {"source_slug": "body-safe-shame-free", "destination_slug": "wellness-district", "anchor_label": "Wellness District", "reason": "Safety to wellness", "required": False},
+    {"source_slug": "body-safe-shame-free", "destination_slug": "beginner-friendly-shopping", "anchor_label": "Beginner-Friendly Shopping", "reason": "Safety to wellness", "required": False},
+    {"source_slug": "body-safe-shame-free", "destination_slug": "long-beach-sexual-wellness", "anchor_label": "Long Beach Sexual Wellness", "reason": "Safety to wellness", "required": False},
+    {"source_slug": "who-we-serve", "destination_slug": "beginner-friendly-shopping", "anchor_label": "Beginner-Friendly Shopping", "reason": "Audience to action", "required": False},
+    {"source_slug": "who-we-serve", "destination_slug": "about", "anchor_label": "About", "reason": "Audience to action", "required": False},
+    {"source_slug": "who-we-serve", "destination_slug": "long-beach-adult-boutique", "anchor_label": "Long Beach Adult Boutique", "reason": "Audience to action", "required": False},
+    {"source_slug": "faq", "destination_slug": "shipping-and-delivery-faq", "anchor_label": "Shipping & Delivery FAQ", "reason": "FAQ support path", "required": False},
+    {"source_slug": "faq", "destination_slug": "body-safe-shame-free", "anchor_label": "Body-Safe, Shame-Free", "reason": "FAQ support path", "required": False},
+    {"source_slug": "faq", "destination_slug": "beginner-friendly-shopping", "anchor_label": "Beginner-Friendly Shopping", "reason": "FAQ support path", "required": False},
+    {"source_slug": "wellness-district", "destination_slug": "long-beach-sexual-wellness", "anchor_label": "Long Beach Sexual Wellness", "reason": "Wellness cluster", "required": False},
+    {"source_slug": "wellness-district", "destination_slug": "body-safe-shame-free", "anchor_label": "Body-Safe, Shame-Free", "reason": "Wellness cluster", "required": False},
+    {"source_slug": "wellness-district", "destination_slug": "pleasure-district", "anchor_label": "Pleasure District", "reason": "Wellness cluster", "required": False},
+    {"source_slug": "pleasure-district", "destination_slug": "wellness-district", "anchor_label": "Wellness District", "reason": "Pleasure cluster", "required": False},
+    {"source_slug": "pleasure-district", "destination_slug": "long-beach-lingerie", "anchor_label": "Long Beach Lingerie", "reason": "Pleasure cluster", "required": False},
+    {"source_slug": "pleasure-district", "destination_slug": "beginner-friendly-shopping", "anchor_label": "Beginner-Friendly Shopping", "reason": "Pleasure cluster", "required": False},
+]
+
+# Auto-suggestion caps for the generic same-family/same-district fallback
+# below -- keeps the output usable instead of combinatorial.
+_AUTO_SUGGESTION_MAX_PER_SOURCE = 3
+
+
 def _generate_link_suggestions(pages: list) -> list:
-    """Generate 'discover next' internal link suggestions."""
+    """
+    Generate 'discover next' internal link suggestions.
+
+    Two sources, combined:
+    1. INTERNAL_LINK_MAP -- curated, explicit source->destination rows.
+    2. A generic same-page_family / same-district_or_pillar fallback, so
+       NEW pages (the 14-page backlog, whatever their real slugs turn out
+       to be) still get real suggestions without needing to be
+       pre-registered in the curated map above. This does not replace
+       curating real links later -- it just means nothing ships with zero
+       suggestions merely because it's new.
+    """
     suggestions = []
 
     # Build lookup
     by_slug = {p.get("slug", ""): p for p in pages}
     by_family = {}
+    by_district = {}
     for p in pages:
-        fam = p.get("page_family", "")
-        by_family.setdefault(fam, []).append(p)
+        by_family.setdefault(p.get("page_family", ""), []).append(p)
+        district = p.get("district_or_pillar")
+        if district:
+            by_district.setdefault(district, []).append(p)
 
-    # Link rules
-    link_rules = [
-        # (from_slug, to_slugs, reason)
-        ("about", ["who-we-serve", "long-beach-adult-boutique", "customer-stories"], "Brand exploration path"),
-        ("long-beach-adult-boutique", ["long-beach-lingerie", "long-beach-sexual-wellness", "beginner-friendly-shopping"], "Local discovery path"),
-        ("long-beach-sexual-wellness", ["body-safe-shame-free", "wellness-district", "beginner-friendly-shopping"], "Wellness exploration"),
-        ("long-beach-lingerie", ["pleasure-district", "long-beach-adult-boutique"], "Lingerie to boutique"),
-        ("beginner-friendly-shopping", ["body-safe-shame-free", "who-we-serve", "faq"], "Beginner trust path"),
-        ("body-safe-shame-free", ["wellness-district", "beginner-friendly-shopping", "long-beach-sexual-wellness"], "Safety to wellness"),
-        ("who-we-serve", ["beginner-friendly-shopping", "about", "long-beach-adult-boutique"], "Audience to action"),
-        ("faq", ["shipping-and-delivery-faq", "body-safe-shame-free", "beginner-friendly-shopping"], "FAQ support path"),
-        ("wellness-district", ["long-beach-sexual-wellness", "body-safe-shame-free", "pleasure-district"], "Wellness cluster"),
-        ("pleasure-district", ["wellness-district", "long-beach-lingerie", "beginner-friendly-shopping"], "Pleasure cluster"),
-    ]
+    # ---- 1. Curated map ----
+    curated_by_source = {}
+    for row in INTERNAL_LINK_MAP:
+        curated_by_source.setdefault(row["source_slug"], []).append(row)
 
-    for from_slug, to_slugs, reason in link_rules:
-        if from_slug in by_slug:
-            valid_links = [s for s in to_slugs if s in by_slug]
-            if valid_links:
-                suggestions.append({
-                    "from_page": by_slug[from_slug].get("page_name", from_slug),
-                    "from_slug": from_slug,
-                    "links_to": [{"slug": s, "name": by_slug[s].get("page_name", s)} for s in valid_links],
-                    "reason": reason,
-                })
+    curated_pairs = set()
+    for source_slug, rows in curated_by_source.items():
+        if source_slug not in by_slug:
+            continue
+        valid_rows = [r for r in rows if r["destination_slug"] in by_slug]
+        if not valid_rows:
+            continue
+        # Group by reason for the same friendly display shape as before,
+        # while still being sourced from the flat, maintainable list.
+        by_reason = {}
+        for r in valid_rows:
+            by_reason.setdefault(r["reason"], []).append(r)
+            curated_pairs.add((source_slug, r["destination_slug"]))
+        for reason, rows_for_reason in by_reason.items():
+            suggestions.append({
+                "from_page": by_slug[source_slug].get("page_name", source_slug),
+                "from_slug": source_slug,
+                "links_to": [
+                    {
+                        "slug": r["destination_slug"],
+                        "name": by_slug[r["destination_slug"]].get("page_name", r["destination_slug"]),
+                        "anchor_label": r["anchor_label"],
+                        "required": r["required"],
+                    }
+                    for r in rows_for_reason
+                ],
+                "reason": reason,
+                "source": "curated",
+            })
+
+    # ---- 2. Generic same-family / same-district fallback ----
+    for source in pages:
+        source_slug = source.get("slug", "")
+        if not source_slug:
+            continue
+
+        candidates = []
+        family = source.get("page_family", "")
+        if family:
+            candidates.extend([p for p in by_family.get(family, []) if p.get("slug") != source_slug])
+        district = source.get("district_or_pillar")
+        if district:
+            candidates.extend([p for p in by_district.get(district, []) if p.get("slug") != source_slug])
+
+        # De-dupe candidates and drop anything already covered by the curated map
+        seen_slugs = set()
+        auto_links = []
+        for c in candidates:
+            c_slug = c.get("slug", "")
+            if not c_slug or c_slug in seen_slugs:
+                continue
+            if (source_slug, c_slug) in curated_pairs:
+                continue
+            seen_slugs.add(c_slug)
+            auto_links.append({
+                "slug": c_slug,
+                "name": c.get("page_name", c_slug),
+                "anchor_label": c.get("page_name", c_slug),
+                "required": False,
+            })
+            if len(auto_links) >= _AUTO_SUGGESTION_MAX_PER_SOURCE:
+                break
+
+        if auto_links:
+            reason = f"Same {'district' if district else 'page family'}"
+            suggestions.append({
+                "from_page": source.get("page_name", source_slug),
+                "from_slug": source_slug,
+                "links_to": auto_links,
+                "reason": reason,
+                "source": "auto",
+            })
 
     return suggestions

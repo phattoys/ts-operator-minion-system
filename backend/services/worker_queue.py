@@ -3,6 +3,7 @@ Worker Queue Service — Task creation, routing rules, worker execution logic.
 Workers: Jenny (copy), Rene (QA), Sam (packs), WP Placement.
 """
 import uuid
+import re
 from datetime import datetime, timezone
 
 from database import db, logger
@@ -510,15 +511,50 @@ async def _execute_rene(task: dict) -> dict:
     }
 
 
+def _extract_hrefs(html: str) -> list:
+    """All href values from anchor tags in the drafted content."""
+    return re.findall(r'href=["\']([^"\']+)["\']', html or "", flags=re.IGNORECASE)
+
+
+def _is_internal_href(href: str) -> bool:
+    """Relative paths, in-page anchors, and the site's own domain count as internal."""
+    if not href:
+        return False
+    href = href.strip()
+    if href.startswith("/") or href.startswith("#"):
+        return True
+    return "temporarysatisfaction.com" in href.lower()
+
+
+def _is_malformed_href(href: str) -> bool:
+    """Basic sanity check, not a full URL validator or crawler."""
+    if not href or not href.strip():
+        return True
+    href = href.strip()
+    if href == "#":
+        return True
+    return not href.startswith(("/", "#", "http://", "https://", "mailto:"))
+
+
 async def _rene_qa_wp_content(task: dict) -> dict:
-    """Rene QA for WP page update: check drafted content exists and is reasonable."""
+    """
+    Rene QA for WP page update: meaningful minimum content checks, not
+    just presence/length. Which checks apply beyond the always-on basics
+    is driven by the task's context.qa_requirements (populated from the
+    Execution Manifest item's own qa_requirements field where the item
+    came from a manifest) -- different pages can require different things;
+    nothing here assumes every page needs the same sections.
+    """
     context = task.get("context", {})
     drafted_html = context.get("drafted_html", "")
     page_name = context.get("page_name", "Unknown")
+    qa_requirements = context.get("qa_requirements") or []
+    related_links = context.get("related_links") or []
 
     issues = []
     warnings = []
 
+    # ---- Always-on basics (unchanged from before) ----
     if not drafted_html:
         issues.append("No drafted HTML content found — Jenny may not have completed drafting")
 
@@ -530,6 +566,76 @@ async def _rene_qa_wp_content(task: dict) -> dict:
 
     if not context.get("page_id") and not context.get("wp_page_id"):
         issues.append("No target page ID — cannot route to WP Placement")
+
+    # ---- Always-on link hygiene (no opt-in needed) ----
+    hrefs = _extract_hrefs(drafted_html) if drafted_html else []
+
+    seen = set()
+    duplicates = set()
+    for h in hrefs:
+        if h in seen:
+            duplicates.add(h)
+        seen.add(h)
+    if duplicates:
+        issues.append(f"Duplicate internal-link URL(s) found: {', '.join(sorted(duplicates))}")
+
+    for h in hrefs:
+        if _is_malformed_href(h):
+            warnings.append(f"Possibly malformed link href: '{h}'")
+
+    # Links explicitly marked internal in structured related_links data
+    # must actually resolve to something that looks internal.
+    for link in related_links:
+        if isinstance(link, dict) and link.get("internal") is True:
+            link_href = link.get("url") or link.get("slug") or ""
+            if link_href and not _is_internal_href(link_href) and not link_href.startswith(("/",)):
+                issues.append(f"Link marked internal is not actually internal: '{link_href}'")
+
+    # ---- Requirement-driven checks: only run when declared, so no page
+    # is forced into another page's requirements ----
+    for req in qa_requirements:
+        req = (req or "").strip()
+        if not req:
+            continue
+
+        if req == "cta_required":
+            cta_present = bool(re.search(
+                r'<a\s+[^>]*href=["\'][^"\']+["\'][^>]*>[^<]*\b(shop|book|learn more|get started|contact|explore|browse|discover|schedule)\b',
+                drafted_html or "", re.IGNORECASE,
+            ))
+            if not cta_present:
+                issues.append("Required CTA not found in drafted content")
+
+        elif req.startswith("min_internal_links:"):
+            try:
+                min_links = int(req.split(":", 1)[1])
+            except ValueError:
+                warnings.append(f"Malformed qa_requirement ignored: '{req}'")
+            else:
+                internal_count = len([h for h in hrefs if _is_internal_href(h)])
+                if internal_count < min_links:
+                    issues.append(f"Minimum internal-link count not met: found {internal_count}, required {min_links}")
+
+        elif req == "internal_only":
+            external = [h for h in hrefs if not _is_internal_href(h) and not h.lower().startswith("mailto:")]
+            if external:
+                issues.append(f"Non-internal link(s) found where internal-only was required: {', '.join(external)}")
+
+        elif req.startswith("required_sections:"):
+            required_sections = [s.strip() for s in req.split(":", 1)[1].split(",") if s.strip()]
+            missing = [s for s in required_sections if s.lower() not in (drafted_html or "").lower()]
+            if missing:
+                issues.append(f"Required section marker(s) missing: {', '.join(missing)}")
+
+        elif req == "seo_required":
+            manifest_page_data = context.get("manifest_page_data") or {}
+            if not context.get("seo_title") and not manifest_page_data.get("seo_title"):
+                warnings.append("SEO title not supplied — required for this page")
+            if not context.get("meta_description") and not manifest_page_data.get("meta_description"):
+                warnings.append("Meta description not supplied — required for this page")
+
+        else:
+            warnings.append(f"Unrecognized qa_requirement ignored: '{req}'")
 
     if issues:
         return {
@@ -545,7 +651,7 @@ async def _rene_qa_wp_content(task: dict) -> dict:
         "passed": True,
         "issues": [],
         "warnings": warnings,
-        "summary": f"WP content QA passed for '{page_name}' ({len(drafted_html)} chars ready)",
+        "summary": f"WP content QA passed for '{page_name}' ({len(drafted_html)} chars ready)" + (f" — {len(warnings)} warning(s)" if warnings else ""),
     }
 
 
@@ -603,6 +709,16 @@ async def _execute_wp(task: dict, user: dict = None) -> dict:
     # Route to update handler for existing page updates
     if task_type == "wp_page_update":
         return await _execute_wp_update(task, user=user)
+
+    # Route to the manifest-sourced create path when the Execution
+    # Manifest supplied its own structured page content directly
+    # (page_create execution items) -- this does NOT require a
+    # pre-existing Page Ops record with generated_content. The original
+    # Page-Ops-sourced path below is completely unchanged and still
+    # handles every other create-path caller exactly as before.
+    _context_peek = task.get("context", {}) or {}
+    if _context_peek.get("manifest_page_data"):
+        return await _execute_wp_create_from_manifest(task, user=user)
 
     # --- Original: create new WP draft ---
     from services.wp_templates import infer_template, get_template
@@ -771,6 +887,202 @@ async def _execute_wp(task: dict, user: dict = None) -> dict:
         "wp_placed_at": now,
         "updated_at": now,
     }})
+
+    return {
+        "success": True,
+        "wp_page_id": wp_page.get("id"),
+        "wp_id": wp_page.get("wp_id"),
+        "wp_status": wp_page.get("status", wp_status),
+        "template": template["name"],
+        "sections_placed": len(result["sections_placed"]),
+        "sections_skipped": len(result["sections_skipped"]),
+        "wp_connected": IS_LIVE,
+        "mock": wp_page.get("mock", False),
+        "warnings": warnings,
+        "summary": f"{'Created WP draft' if execution_mode == 'live' else 'Created mock draft'}: {page_title} ({template['name']}, {len(result['sections_placed'])} sections)",
+    }
+
+
+async def _execute_wp_create_from_manifest(task: dict, user: dict = None) -> dict:
+    """
+    Create a new WordPress page directly from an Execution Manifest
+    page_create item's own supplied content -- title, slug, page_type,
+    copy/content, hero headline, intro, body sections, CTA text/URL,
+    related_links, template preference, and publication intent (see
+    services/execution_manifest.queue_execution_item(), which builds
+    context["manifest_page_data"] for exactly this function).
+
+    This does NOT require a pre-existing Page Ops record. It reuses the
+    same templates, WordPress client, write-safety gate, dry-run/approval
+    flow, and placement logging as the original Page-Ops-sourced create
+    path above -- this is a second CONTENT SOURCE for the same creation
+    system, not a second WordPress creation system.
+
+    Manifest publication intent (publication_mode) is read the same way
+    the Page-Ops path already reads it: it only ever influences what
+    status a LIVE, already-approved write requests. It never itself
+    authorizes a live write or a publish -- the existing WP write-safety
+    gate (services/wp_write_safety.py) independently re-derives and
+    enforces this from the consumed approval record regardless of what
+    is requested here, exactly as before.
+    """
+    from services.wp_templates import infer_template, get_template
+    from services.wp_placement import build_page_content
+    from services.wp_client import create_page, IS_LIVE
+    from services.wp_write_safety import issue_approval_token, WpWriteSafetyError
+
+    context = task.get("context", {}) or {}
+    data = context.get("manifest_page_data", {}) or {}
+    execution_item_id = task["source_item_id"]
+    warnings = []
+    execution_mode = context.get("execution_mode", "dry_run")
+    publication_mode = context.get("publication_mode", "draft")
+    approval_token = context.get("approval_token")
+
+    page_title = (data.get("title") or "").strip()
+    if not page_title:
+        return {"error": "Manifest page_create item has no title", "success": False}
+
+    page_type = data.get("page_type") or ""
+    slug = (data.get("slug") or "").strip() or page_title.lower().replace(" ", "-")[:60]
+
+    # 1. Resolve template: explicit manifest preference wins; otherwise
+    # infer exactly like the Page-Ops-sourced path does.
+    template_id = data.get("template_id")
+    inference = None
+    if not template_id:
+        inference = infer_template(
+            page_type=page_type,
+            title=page_title,
+            content=f"{data.get('hero_headline', '')} {data.get('intro', '')} {data.get('body_section_1', '')}"[:500],
+        )
+        template_id = inference.get("template_id", "standard_content")
+        if inference.get("needs_review"):
+            warnings.append(f"Template auto-inferred with {inference.get('confidence', '?')} confidence — verify selection")
+
+    template = get_template(template_id)
+    if not template:
+        return {"error": f"Template {template_id} not found", "success": False}
+
+    # 2. Build structured content directly from manifest-supplied fields.
+    # 'copy' is the item's main content and is used as body_section_1 only
+    # when the manifest didn't already supply an explicit body_section_1 --
+    # explicit structured fields always win over the free-text copy field.
+    structured_content = {
+        "hero_headline": data.get("hero_headline") or page_title,
+        "subheadline": data.get("subheadline", ""),
+        "intro": data.get("intro", ""),
+        "body_section_1": data.get("body_section_1") or data.get("copy", ""),
+        "body_section_2": data.get("body_section_2", ""),
+        "body_section_3": data.get("body_section_3", ""),
+        "cta_text": data.get("cta_text", ""),
+        "cta_url": data.get("cta_url", ""),
+        "related_links": data.get("related_links", []),
+    }
+
+    # 3. Build page HTML — safe in every mode, never writes anywhere
+    result = build_page_content(template, structured_content)
+    html = result["html"]
+
+    if not html or not html.strip():
+        return {
+            "needs_review": True,
+            "reason": "Template rendering produced empty HTML — manifest content may not map to template sections",
+            "warnings": result.get("warnings", []),
+        }
+
+    warnings.extend(result.get("warnings", []))
+
+    meta = {}
+    if data.get("seo_title"):
+        meta["seo_title"] = data["seo_title"]
+    if data.get("meta_description"):
+        meta["meta_description"] = data["meta_description"]
+
+    # 4. Fetch WP settings (same convention as the Page-Ops-sourced path)
+    settings = await db.wp_settings.find_one({}, {"_id": 0}) or {}
+    wp_status = settings.get("default_status", "draft")
+
+    write_payload = {"title": page_title, "slug": slug, "content": html, "meta": meta}
+
+    # ---- DRY RUN (default): preview + approval token, no write ----
+    if execution_mode == "dry_run":
+        approval = await issue_approval_token(
+            scope="single",
+            scope_ids=[execution_item_id],
+            payload=write_payload,
+            publication_mode=publication_mode,
+        )
+        return {
+            "needs_review": True,
+            "reason": "Dry-run preview ready — review and re-execute with execution_mode=live to write to WordPress",
+            "preview": {
+                "template": template["name"],
+                "title": page_title,
+                "slug": slug,
+                "sections_placed": result["sections_placed"],
+                "sections_skipped": result["sections_skipped"],
+                "html_preview": html,
+                "publication_mode": publication_mode,
+            },
+            "approval_token": approval["token"],
+            "expires_at": approval["expires_at"],
+            "warnings": warnings,
+        }
+
+    # ---- MOCK / LIVE: an actual write is being requested ----
+    # Same rule as the Page-Ops-sourced path: wp_client.create_page()
+    # independently re-derives and enforces draft-vs-publish from the
+    # consumed approval record regardless of what's requested here.
+    desired_status = "publish" if publication_mode == "publish" else wp_status
+
+    try:
+        wp_page = await create_page(
+            title=page_title,
+            slug=slug,
+            content=html,
+            status=desired_status,
+            meta=meta,
+            execution_mode=execution_mode,
+            approval_token=approval_token,
+            scope_ids=[execution_item_id],
+            user=user,
+        )
+    except WpWriteSafetyError as e:
+        return {"error": str(e), "success": False, "warnings": warnings}
+
+    if not wp_page:
+        return {
+            "error": "WordPress page creation failed — check WP connection and credentials",
+            "success": False,
+            "warnings": warnings,
+        }
+
+    # 5. Log placement record — same collection, same shape, sourced from
+    # the manifest instead of Page Ops.
+    now = datetime.now(timezone.utc).isoformat()
+    placement = {
+        "id": str(uuid.uuid4()),
+        "mode": "create",
+        "page_id": wp_page.get("id"),
+        "wp_id": wp_page.get("wp_id"),
+        "page_title": page_title,
+        "slug": wp_page.get("slug", slug),
+        "template_id": template_id,
+        "template_name": template["name"],
+        "inference": inference,
+        "sections_placed": result["sections_placed"],
+        "sections_skipped": result["sections_skipped"],
+        "warnings": warnings,
+        "wp_connected": IS_LIVE,
+        "execution_mode": execution_mode,
+        "status": wp_page.get("status", wp_status),
+        "source": "execution_manifest",
+        "source_manifest_id": context.get("manifest_id"),
+        "source_execution_item_id": execution_item_id,
+        "created_at": now,
+    }
+    await db.wp_placements.insert_one(placement)
 
     return {
         "success": True,

@@ -542,6 +542,44 @@ async def queue_execution_item(manifest_id: str, item_id: str, user: dict = None
             task_context.setdefault("update_instructions", item["instructions"])
         if placement.get("publication_mode"):
             task_context.setdefault("publication_mode", placement["publication_mode"])
+        # So Rene's WP QA (services/worker_queue._rene_qa_wp_content) can
+        # apply this item's own requirements instead of a one-size-fits-all
+        # check -- different pages can require different things.
+        if item.get("qa_requirements"):
+            task_context.setdefault("qa_requirements", item["qa_requirements"])
+        if placement.get("related_links"):
+            task_context.setdefault("related_links", placement["related_links"])
+        if placement.get("seo_title"):
+            task_context.setdefault("seo_title", placement["seo_title"])
+        if placement.get("meta_description"):
+            task_context.setdefault("meta_description", placement["meta_description"])
+
+    if routing["worker"] == "wp_placement" and routing["task_type"] == "wp_draft":
+        # page_create: build the new-page content directly from the
+        # manifest item's own fields -- no pre-existing Page Ops record
+        # required. See services/worker_queue._execute_wp_create_from_manifest().
+        placement = item.get("placement") or {}
+        manifest_page_data = {
+            "title": item.get("title"),
+            "slug": placement.get("slug"),
+            "page_type": placement.get("page_type") or item.get("content_type"),
+            "template_id": placement.get("template_id"),
+            "copy": item.get("copy"),
+            "hero_headline": placement.get("hero_headline"),
+            "subheadline": placement.get("subheadline"),
+            "intro": placement.get("intro") or item.get("description"),
+            "body_section_1": placement.get("body_section_1"),
+            "body_section_2": placement.get("body_section_2"),
+            "body_section_3": placement.get("body_section_3"),
+            "cta_text": placement.get("cta_text"),
+            "cta_url": placement.get("cta_url"),
+            "related_links": placement.get("related_links", []),
+            "seo_title": placement.get("seo_title"),
+            "meta_description": placement.get("meta_description"),
+        }
+        task_context.setdefault("manifest_page_data", manifest_page_data)
+        if placement.get("publication_mode"):
+            task_context.setdefault("publication_mode", placement["publication_mode"])
 
     task_context.update({
         "manifest_id": manifest_id,
