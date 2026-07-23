@@ -54,6 +54,7 @@ def _manifest_body():
                     "hero_headline": "HTTP Verified",
                     "intro": "Proving the repair end to end.",
                     "cta_text": "Shop Now", "cta_url": "/shop",
+                    "template_id": "standard_content",
                     "related_links": [{"url": "/about", "title": "About"}],
                 },
                 "asset_refs": [], "dependencies": [], "context": {}, "qa_requirements": [], "warnings": [],
@@ -76,9 +77,19 @@ class TestPageCreateHttpRepair:
 
         queue = client.post(f"/api/execution-manifests/{manifest_id}/items/item-1/queue", headers=auth_headers)
         assert queue.status_code == 200, queue.text
-        task_id = queue.json()["worker_task_id"]
 
-        # wp_placement is founder-gated -- explicit first execute
+        # page_create now runs Rene QA FIRST, then a founder-gated WP
+        # Placement CREATE. Walk the trace to find the wp_draft task.
+        trace = client.get(f"/api/execution-manifests/{manifest_id}/trace", headers=auth_headers)
+        assert trace.status_code == 200, trace.text
+        chain = trace.json()["items"][0]["worker_chain"]
+        workers = [c["worker"] for c in chain]
+        assert "rene" in workers and "jenny" not in workers
+        wp = next(c for c in chain if c["worker"] == "wp_placement")
+        assert wp["task_type"] == "wp_draft"
+        task_id = wp["task_id"]
+
+        # wp_placement is founder-gated -- explicit first execute (dry-run)
         first = client.post(f"/api/worker-queue/tasks/{task_id}/execute", headers=auth_headers)
         assert first.status_code == 200, first.text
         assert first.json()["status"] == "needs_review"

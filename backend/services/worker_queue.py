@@ -536,6 +536,84 @@ def _is_malformed_href(href: str) -> bool:
     return not href.startswith(("/", "#", "http://", "https://", "mailto:"))
 
 
+def _section_satisfied(name: str, html_lower: str, manifest_data: dict) -> bool:
+    """
+    A required section is satisfied when its literal marker appears in the
+    rendered HTML OR the corresponding structured manifest field carries
+    content OR the section's rendered form is recognizable in the Flatsome
+    output. Falls back to literal-only matching for unknown/custom names,
+    exactly as before -- so existing update-path QA is unchanged.
+    """
+    if name in html_lower:
+        return True
+    data = manifest_data or {}
+    if name == "hero":
+        return bool(data.get("hero_headline") or data.get("title")) or "<h1" in html_lower
+    if name == "intro":
+        return bool(data.get("intro"))
+    if name == "body":
+        return bool(data.get("body_section_1") or data.get("body_section_2")
+                    or data.get("body_section_3") or data.get("copy"))
+    if name == "cta":
+        return bool(data.get("cta_text")) or "[button" in html_lower
+    if name in ("related", "related_links", "related links"):
+        return bool(data.get("related_links")) or "<a href" in html_lower
+    return False
+
+
+def build_structured_content_from_manifest(data: dict) -> dict:
+    """
+    Map a manifest page_create item's own fields into the structured
+    content dict the template renderer expects. 'copy' is used as
+    body_section_1 only when no explicit body_section_1 was supplied --
+    explicit structured fields always win over the free-text copy field.
+    Single source of truth reused by both Rene QA (preview render) and the
+    WP Placement create path, so what QA inspects is exactly what gets placed.
+    """
+    data = data or {}
+    return {
+        "hero_headline": data.get("hero_headline") or data.get("title") or "",
+        "subheadline": data.get("subheadline", ""),
+        "intro": data.get("intro", ""),
+        "body_section_1": data.get("body_section_1") or data.get("copy", ""),
+        "body_section_2": data.get("body_section_2", ""),
+        "body_section_3": data.get("body_section_3", ""),
+        "cta_text": data.get("cta_text", ""),
+        "cta_url": data.get("cta_url", ""),
+        "related_links": data.get("related_links", []),
+    }
+
+
+def resolve_manifest_template(data: dict) -> dict:
+    """
+    Resolve which template a manifest page_create item should use.
+
+    - An explicit template_id in the manifest is a valid founder selection
+      and is preserved as-is (never overridden, never flagged for review).
+    - Otherwise the template is auto-inferred. If that inference is
+      low/medium confidence it is flagged needs_review=True so the
+      page_create cannot silently proceed -- unless the manifest explicitly
+      sets template_confirmed=True (founder accepted the inferred template).
+    """
+    from services.wp_templates import infer_template, get_template
+    data = data or {}
+    explicit_id = data.get("template_id")
+    confirmed = bool(data.get("template_confirmed"))
+    if explicit_id:
+        return {"template_id": explicit_id, "template": get_template(explicit_id),
+                "confidence": "explicit", "needs_review": False, "explicit": True, "inference": None}
+    inference = infer_template(
+        page_type=data.get("page_type") or "",
+        title=data.get("title") or "",
+        content=f"{data.get('hero_headline', '')} {data.get('intro', '')} {data.get('body_section_1') or data.get('copy', '')}"[:500],
+    )
+    tid = inference.get("template_id", "standard_content")
+    return {"template_id": tid, "template": get_template(tid),
+            "confidence": inference.get("confidence"),
+            "needs_review": bool(inference.get("needs_review")) and not confirmed,
+            "explicit": False, "inference": inference}
+
+
 async def _rene_qa_wp_content(task: dict) -> dict:
     """
     Rene QA for WP page update: meaningful minimum content checks, not
@@ -550,9 +628,26 @@ async def _rene_qa_wp_content(task: dict) -> dict:
     page_name = context.get("page_name", "Unknown")
     qa_requirements = context.get("qa_requirements") or []
     related_links = context.get("related_links") or []
+    manifest_page_data = context.get("manifest_page_data") or {}
+    is_page_create = bool(context.get("is_page_create") or manifest_page_data)
 
     issues = []
     warnings = []
+
+    # For manifest-sourced page_create, the manifest content is
+    # authoritative and Jenny drafting is skipped -- render the exact
+    # Flatsome preview here so QA inspects what WP Placement will actually
+    # produce (not raw prose). Genuinely missing content still renders empty
+    # HTML and fails the basics below.
+    template_info = None
+    if is_page_create:
+        template_info = resolve_manifest_template(manifest_page_data)
+        if not drafted_html and manifest_page_data and template_info.get("template"):
+            from services.wp_placement import build_page_content
+            structured = build_structured_content_from_manifest(manifest_page_data)
+            drafted_html = build_page_content(template_info["template"], structured).get("html", "")
+        if not related_links and manifest_page_data.get("related_links"):
+            related_links = manifest_page_data["related_links"]
 
     # ---- Always-on basics (unchanged from before) ----
     if not drafted_html:
@@ -564,8 +659,19 @@ async def _rene_qa_wp_content(task: dict) -> dict:
     if drafted_html and "<script" in drafted_html.lower():
         issues.append("Drafted content contains <script> tag — potential security issue")
 
-    if not context.get("page_id") and not context.get("wp_page_id"):
+    # A brand-new page (page_create) has no existing target yet -- the
+    # target-page-ID requirement only applies to updates of an existing page.
+    if not is_page_create and not context.get("page_id") and not context.get("wp_page_id"):
         issues.append("No target page ID — cannot route to WP Placement")
+
+    # Low-confidence template auto-inference must be explicitly reviewed
+    # before a page_create can proceed to WP Placement / founder approval.
+    if is_page_create and template_info and template_info.get("needs_review"):
+        issues.append(
+            f"Template selection needs founder review (auto-inferred "
+            f"'{template_info.get('template_id')}', confidence={template_info.get('confidence')}) "
+            "— set an explicit template_id or template_confirmed before placement"
+        )
 
     # ---- Always-on link hygiene (no opt-in needed) ----
     hrefs = _extract_hrefs(drafted_html) if drafted_html else []
@@ -603,6 +709,13 @@ async def _rene_qa_wp_content(task: dict) -> dict:
                 r'<a\s+[^>]*href=["\'][^"\']+["\'][^>]*>[^<]*\b(shop|book|learn more|get started|contact|explore|browse|discover|schedule)\b',
                 drafted_html or "", re.IGNORECASE,
             ))
+            # Flatsome renders a CTA as a [button ...] shortcode, and a
+            # manifest may carry the CTA as structured cta_text/cta_url --
+            # both are valid CTAs, not QA failures.
+            if not cta_present and re.search(r'\[button\b', drafted_html or "", re.IGNORECASE):
+                cta_present = True
+            if not cta_present and manifest_page_data.get("cta_text") and manifest_page_data.get("cta_url"):
+                cta_present = True
             if not cta_present:
                 issues.append("Required CTA not found in drafted content")
 
@@ -623,7 +736,9 @@ async def _rene_qa_wp_content(task: dict) -> dict:
 
         elif req.startswith("required_sections:"):
             required_sections = [s.strip() for s in req.split(":", 1)[1].split(",") if s.strip()]
-            missing = [s for s in required_sections if s.lower() not in (drafted_html or "").lower()]
+            html_lower = (drafted_html or "").lower()
+            missing = [s for s in required_sections
+                       if not _section_satisfied(s.lower(), html_lower, manifest_page_data)]
             if missing:
                 issues.append(f"Required section marker(s) missing: {', '.join(missing)}")
 
@@ -946,39 +1061,34 @@ async def _execute_wp_create_from_manifest(task: dict, user: dict = None) -> dic
     page_type = data.get("page_type") or ""
     slug = (data.get("slug") or "").strip() or page_title.lower().replace(" ", "-")[:60]
 
-    # 1. Resolve template: explicit manifest preference wins; otherwise
-    # infer exactly like the Page-Ops-sourced path does.
-    template_id = data.get("template_id")
-    inference = None
-    if not template_id:
-        inference = infer_template(
-            page_type=page_type,
-            title=page_title,
-            content=f"{data.get('hero_headline', '')} {data.get('intro', '')} {data.get('body_section_1', '')}"[:500],
-        )
-        template_id = inference.get("template_id", "standard_content")
-        if inference.get("needs_review"):
-            warnings.append(f"Template auto-inferred with {inference.get('confidence', '?')} confidence — verify selection")
+    # 1. Resolve template: an explicit manifest template_id is a valid
+    # founder selection and is preserved. A low-confidence auto-inference
+    # is flagged needs_review and BLOCKS here -- no approval token is ever
+    # issued for a page_create whose template hasn't been confirmed.
+    tinfo = resolve_manifest_template(data)
+    template_id = tinfo["template_id"]
+    template = tinfo["template"]
+    inference = tinfo.get("inference")
 
-    template = get_template(template_id)
     if not template:
         return {"error": f"Template {template_id} not found", "success": False}
 
-    # 2. Build structured content directly from manifest-supplied fields.
-    # 'copy' is the item's main content and is used as body_section_1 only
-    # when the manifest didn't already supply an explicit body_section_1 --
-    # explicit structured fields always win over the free-text copy field.
-    structured_content = {
-        "hero_headline": data.get("hero_headline") or page_title,
-        "subheadline": data.get("subheadline", ""),
-        "intro": data.get("intro", ""),
-        "body_section_1": data.get("body_section_1") or data.get("copy", ""),
-        "body_section_2": data.get("body_section_2", ""),
-        "body_section_3": data.get("body_section_3", ""),
-        "cta_text": data.get("cta_text", ""),
-        "cta_url": data.get("cta_url", ""),
-        "related_links": data.get("related_links", []),
-    }
+    if tinfo.get("needs_review"):
+        return {
+            "needs_review": True,
+            "reason": (f"Template selection needs founder review (auto-inferred '{template_id}', "
+                       f"confidence={tinfo.get('confidence')}). Confirm an explicit template "
+                       "before this page_create can be approved for a live write."),
+            "template_suggestion": {"template_id": template_id, "confidence": tinfo.get("confidence"),
+                                    "inference": inference},
+            "warnings": warnings,
+        }
+    if inference and inference.get("needs_review"):
+        warnings.append(f"Template auto-inferred with {inference.get('confidence', '?')} confidence — verify selection")
+
+    # 2. Build structured content directly from manifest-supplied fields
+    # (shared with Rene QA's preview render, so QA and placement agree).
+    structured_content = build_structured_content_from_manifest(data)
 
     # 3. Build page HTML — safe in every mode, never writes anywhere
     result = build_page_content(template, structured_content)
@@ -1297,12 +1407,16 @@ async def _route_next(task: dict):
         result = task.get("result", {})
         if result.get("passed"):
             if task_type == "wp_content_qa":
-                # Rene approved WP content → route to WP Placement for update
+                # page_create (manifest-sourced) → WP Placement CREATE
+                # (wp_draft); existing-page update → WP Placement UPDATE
+                # (wp_page_update). Both stay founder-gated and write-safety
+                # gated exactly as before.
+                is_create = bool(context.get("manifest_page_data") or context.get("is_page_create"))
                 await create_worker_task(
-                    source_module="page_ops",
+                    source_module=task.get("source_module", "page_ops"),
                     source_item_id=item_id,
                     worker="wp_placement",
-                    task_type="wp_page_update",
+                    task_type="wp_draft" if is_create else "wp_page_update",
                     context=context,
                 )
             else:

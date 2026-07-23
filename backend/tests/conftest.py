@@ -67,6 +67,13 @@ def mock_db(monkeypatch):
 
     import services.wp_client as wpc
     monkeypatch.setattr(wpc, "db", fake_db)
+    # Unit tests must NEVER reach real WordPress even when the pod's .env
+    # carries live WP credentials (which makes wpc.IS_LIVE True at import).
+    # Force mock mode by default; the few tests that deliberately exercise
+    # the live branch monkeypatch IS_LIVE=True themselves AFTER this fixture.
+    monkeypatch.setattr(wpc, "IS_LIVE", False)
+    monkeypatch.setattr(wpc, "_api_base", "")
+    monkeypatch.setattr(wpc, "_headers", {})
 
     import services.worker_queue as wq
     monkeypatch.setattr(wq, "db", fake_db)

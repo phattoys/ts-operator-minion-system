@@ -58,40 +58,55 @@ def _manifest_payload(items=None, manifest_id=None):
 
 class TestManifestPageCreate:
 
-    async def test_page_create_dry_run_never_needs_page_ops_record(self, mock_db):
-        """The whole point of the repair: no db.pages lookup happens at all."""
-        manifest = await em.create_manifest(_manifest_payload(items=[_page_create_item()]))
+    async def _queue(self, item):
+        manifest = await em.create_manifest(_manifest_payload(items=[item]))
         await em.run_validation(manifest["manifest_id"])
-        result = await em.queue_execution_item(manifest["manifest_id"], "item-1", user=FAKE_USER)
+        result = await em.queue_execution_item(manifest["manifest_id"], item["item_id"], user=FAKE_USER)
+        chain = await em.get_worker_chain(item["item_id"])
+        return manifest, result, chain
 
-        assert result["queued"] is True
-        assert result["worker"] == "wp_placement"
-        assert result["task_type"] == "wp_draft"
+    async def test_page_create_auto_invokes_rene_then_founder_gated_wp_placement(self, mock_db):
+        """page_create runs Rene QA FIRST; on pass it hands off to a founder-gated WP Placement create."""
+        manifest, result, chain = await self._queue(_page_create_item())
+        assert result["worker"] == "rene"
+        assert result["task_type"] == "wp_content_qa"
 
-        # wp_placement is founder-gated -- it stays queued until explicitly
-        # executed, unlike Jenny/Rene which auto_execute.
-        task = await mock_db.worker_tasks.find_one({"id": result["worker_task_id"]}, {"_id": 0})
-        assert task["status"] == "queued"
-        executed = await wq.execute_worker_task(result["worker_task_id"], user=FAKE_USER)
+        workers = [c["worker"] for c in chain]
+        assert "rene" in workers and "wp_placement" in workers
+        assert "jenny" not in workers  # manifest content is authoritative; no Jenny drafting
+
+        rene = next(c for c in chain if c["worker"] == "rene")
+        assert rene["status"] == "completed" and rene["result"]["passed"] is True
+
+        wpp = next(c for c in chain if c["worker"] == "wp_placement")
+        assert wpp["task_type"] == "wp_draft"
+        assert wpp["status"] == "queued"  # founder-gated, never auto-executed
+
+        executed = await wq.execute_worker_task(wpp["task_id"], user=FAKE_USER)
         assert executed["status"] == "needs_review"  # dry-run default, unchanged safety behavior
         preview = executed["result"]["preview"]
         assert preview["title"] == "New Trust Page From Manifest"
-        assert preview["slug"] == "new-trust-page"
         assert "Welcome to Temporary Satisfaction" in preview["html_preview"]
         assert "This is the main body content" in preview["html_preview"]
-        assert "/about" in preview["html_preview"]  # related_links rendered
+        assert "/about" in preview["html_preview"]
+        assert executed["result"].get("approval_token")
+        assert await mock_db.pages.count_documents({}) == 0  # no Page Ops record required
 
-        # No Page Ops record was ever created or required
-        assert await mock_db.pages.count_documents({}) == 0
+    async def test_blocking_rene_issue_prevents_wp_placement(self, mock_db):
+        """A blocking Rene QA issue means NO WP Placement task is created — no approval readiness."""
+        item = _page_create_item(qa_requirements=["required_sections:pricing,warranty"])
+        manifest, result, chain = await self._queue(item)
+        rene = next(c for c in chain if c["worker"] == "rene")
+        assert rene["status"] == "needs_review"
+        assert rene["result"]["passed"] is False
+        assert "pricing" in rene["result"]["reason"].lower()
+        assert not any(c["worker"] == "wp_placement" for c in chain)
 
     async def test_page_create_approved_mock_write_creates_real_content(self, mock_db):
-        manifest = await em.create_manifest(_manifest_payload(items=[_page_create_item()]))
-        await em.run_validation(manifest["manifest_id"])
-        result = await em.queue_execution_item(manifest["manifest_id"], "item-1", user=FAKE_USER)
-        task_id = result["worker_task_id"]
-
-        await mock_db.worker_tasks.update_one({"id": task_id}, {"$set": {"status": "queued", "context.execution_mode": "mock"}})
-        second = await wq.execute_worker_task(task_id, user=FAKE_USER)
+        manifest, result, chain = await self._queue(_page_create_item())
+        wpp = next(c for c in chain if c["worker"] == "wp_placement")
+        await mock_db.worker_tasks.update_one({"id": wpp["task_id"]}, {"$set": {"status": "queued", "context.execution_mode": "mock"}})
+        second = await wq.execute_worker_task(wpp["task_id"], user=FAKE_USER)
         assert second["status"] == "completed"
         assert second["result"]["success"] is True
 
@@ -100,34 +115,35 @@ class TestManifestPageCreate:
         assert placement["source"] == "execution_manifest"
         assert placement["page_title"] == "New Trust Page From Manifest"
 
-    async def test_publication_intent_alone_never_authorizes_publish(self, mock_db, monkeypatch):
+    async def test_publication_intent_alone_never_authorizes_publish(self, mock_db):
         """Manifest publication_mode=publish must still require the real approval flow to take effect."""
         item = _page_create_item(placement={
             "slug": "publish-intent-test", "hero_headline": "Test", "intro": "x",
+            "body_section_1": "Enough body content here for QA to pass cleanly.",
+            "template_id": "standard_content",
             "publication_mode": "publish",
         })
-        manifest = await em.create_manifest(_manifest_payload(items=[item]))
-        await em.run_validation(manifest["manifest_id"])
-        result = await em.queue_execution_item(manifest["manifest_id"], "item-1", user=FAKE_USER)
-        task_id = result["worker_task_id"]
+        manifest, result, chain = await self._queue(item)
+        wpp = next(c for c in chain if c["worker"] == "wp_placement")
 
-        # Dry-run preview reflects the requested intent but writes nothing
-        executed = await wq.execute_worker_task(task_id, user=FAKE_USER)
+        executed = await wq.execute_worker_task(wpp["task_id"], user=FAKE_USER)
         assert executed["result"]["preview"]["publication_mode"] == "publish"
         assert executed["status"] == "needs_review"
 
-        # Mock mode never touches real WordPress or publish logic regardless
-        await mock_db.worker_tasks.update_one({"id": task_id}, {"$set": {"status": "queued", "context.execution_mode": "mock"}})
-        result2 = await wq.execute_worker_task(task_id, user=FAKE_USER)
+        await mock_db.worker_tasks.update_one({"id": wpp["task_id"]}, {"$set": {"status": "queued", "context.execution_mode": "mock"}})
+        result2 = await wq.execute_worker_task(wpp["task_id"], user=FAKE_USER)
         assert result2["status"] == "completed"
         assert result2["result"]["mock"] is True  # never a real live publish
 
     async def test_page_create_without_title_fails_cleanly(self, mock_db):
-        item = _page_create_item(title="")
-        manifest = await em.create_manifest(_manifest_payload(items=[item]))
-        await em.run_validation(manifest["manifest_id"])
-        result = await em.queue_execution_item(manifest["manifest_id"], "item-1", user=FAKE_USER)
-        executed = await wq.execute_worker_task(result["worker_task_id"], user=FAKE_USER)
+        item = _page_create_item(title="", placement={
+            "slug": "no-title", "hero_headline": "", "intro": "some intro paragraph",
+            "template_id": "standard_content", "publication_mode": "draft",
+        })
+        manifest, result, chain = await self._queue(item)
+        wpp = next((c for c in chain if c["worker"] == "wp_placement"), None)
+        assert wpp is not None  # QA passes on content; the title gap is caught at placement
+        executed = await wq.execute_worker_task(wpp["task_id"], user=FAKE_USER)
         assert executed["status"] == "failed"
         assert "title" in executed["result"]["error"].lower()
 

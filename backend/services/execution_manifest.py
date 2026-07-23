@@ -259,9 +259,9 @@ def determine_routing(item: dict) -> dict:
         if execution_type == "page_create":
             return {
                 "support": "supported_now",
-                "worker": "wp_placement",
-                "task_type": "wp_draft",
-                "reason": "Routed to WP Placement create path, write-safety gated.",
+                "worker": "rene",
+                "task_type": "wp_content_qa",
+                "reason": "Routed to Rene (wp_content_qa) -> WP Placement create (wp_draft), write-safety gated.",
             }
         return {
             "support": "needs_review",
@@ -554,16 +554,20 @@ async def queue_execution_item(manifest_id: str, item_id: str, user: dict = None
         if placement.get("meta_description"):
             task_context.setdefault("meta_description", placement["meta_description"])
 
-    if routing["worker"] == "wp_placement" and routing["task_type"] == "wp_draft":
-        # page_create: build the new-page content directly from the
-        # manifest item's own fields -- no pre-existing Page Ops record
-        # required. See services/worker_queue._execute_wp_create_from_manifest().
+    if routing["worker"] == "rene" and routing["task_type"] == "wp_content_qa":
+        # page_create: Rene QA runs FIRST on the manifest's own content
+        # (rendered to the real Flatsome preview inside Rene). Only if QA
+        # passes does routing hand off to WP Placement's CREATE path
+        # (_execute_wp_create_from_manifest). No pre-existing Page Ops
+        # record is required, and Jenny drafting is skipped -- the manifest
+        # content is authoritative.
         placement = item.get("placement") or {}
         manifest_page_data = {
             "title": item.get("title"),
             "slug": placement.get("slug"),
             "page_type": placement.get("page_type") or item.get("content_type"),
             "template_id": placement.get("template_id"),
+            "template_confirmed": placement.get("template_confirmed"),
             "copy": item.get("copy"),
             "hero_headline": placement.get("hero_headline"),
             "subheadline": placement.get("subheadline"),
@@ -578,6 +582,15 @@ async def queue_execution_item(manifest_id: str, item_id: str, user: dict = None
             "meta_description": placement.get("meta_description"),
         }
         task_context.setdefault("manifest_page_data", manifest_page_data)
+        task_context.setdefault("is_page_create", True)
+        if item.get("qa_requirements"):
+            task_context.setdefault("qa_requirements", item["qa_requirements"])
+        if placement.get("related_links"):
+            task_context.setdefault("related_links", placement["related_links"])
+        if placement.get("seo_title"):
+            task_context.setdefault("seo_title", placement["seo_title"])
+        if placement.get("meta_description"):
+            task_context.setdefault("meta_description", placement["meta_description"])
         if placement.get("publication_mode"):
             task_context.setdefault("publication_mode", placement["publication_mode"])
 
