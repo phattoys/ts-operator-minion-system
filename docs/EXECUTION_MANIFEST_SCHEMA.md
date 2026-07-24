@@ -63,7 +63,7 @@ existed.
 | `content_type` | string | Free-form, e.g. `"section"`, `"post"`. |
 | `destination` | enum | See Destination Labels below. Required. |
 | `channel` / `platform` | string | Optional, free-form sub-routing hints. |
-| `execution_type` | string | Required, e.g. `content_draft`, `page_update`, `page_create`, `destination_pack`. |
+| `execution_type` | string | Required, e.g. `content_draft`, `page_update`, `page_create`, `destination_pack`, `taxonomy_update`, `taxonomy_create`. |
 | `recommended_worker` | string | Set by validation (see Routing Rules). |
 | `task_type` | string | Set by validation. |
 | `requires_founder_approval` | bool | Advisory; the WP write-safety gate enforces this independently regardless of this flag. |
@@ -73,9 +73,9 @@ existed.
 | `asset_refs` | list of string | Must all exist in the manifest's `assets` index. |
 | `copy` | string | Final, ready-to-use content, if the source system already produced it. |
 | `instructions` | string | Instructions for content generation, if `copy` isn't already final. |
-| `placement` | object | Destination-specific placement info. For `content_draft`/`page_update`: `{page_id, wp_page_id, insert_after, insert_before, publication_mode}`. For `page_create` (see below): `{slug, page_type, template_id, hero_headline, subheadline, intro, body_section_1, body_section_2, body_section_3, cta_text, cta_url, related_links, seo_title, meta_description, publication_mode}`. |
+| `placement` | object | Destination-specific placement info. For `content_draft`/`page_update`: `{page_id, wp_page_id, insert_after, insert_before, publication_mode}`. For `page_create` (see below): `{slug, page_type, template_id, hero_headline, subheadline, intro, body_section_1, body_section_2, body_section_3, cta_text, cta_url, related_links, seo_title, meta_description, publication_mode}`. For `taxonomy_update`/`taxonomy_create` (WooCommerce product-category terms — see WooCommerce Taxonomy Lane below): `{term_id, slug, description, introduction, how_to_guidance, faqs, parent, cta_text, cta_url, related_links, seo_title, meta_description}`. `term_id` is required for `taxonomy_update`, always `null` for `taxonomy_create`, and must never be confused with `page_id`/`wp_page_id`. |
 | `compliance_notes` | string | Optional. |
-| `qa_requirements` | list of string | Optional. Convention strings Rene's WP content QA (`services/worker_queue._rene_qa_wp_content`) understands: `cta_required`, `min_internal_links:N`, `internal_only`, `required_sections:key1,key2`, `seo_required`. Unrecognized strings produce a warning, never a failure — different pages can declare different requirements; none are assumed by default. Duplicate internal-link URLs and basic malformed-href detection run unconditionally regardless of what's declared here. |
+| `qa_requirements` | list of string | Optional. Convention strings Rene's WP content QA (`services/worker_queue._rene_qa_wp_content`) and taxonomy QA (`services/worker_queue._rene_qa_taxonomy_content`) understand: `cta_required`, `min_internal_links:N`, `internal_only`, `required_sections:key1,key2` (pages only), `seo_required`, `intro_required` (taxonomy only), `how_to_required` (taxonomy only), `faq_count:N` (taxonomy only). Unrecognized strings produce a warning, never a failure — different items can declare different requirements; none are assumed by default. Duplicate internal-link URLs and basic malformed-href detection run unconditionally regardless of what's declared here. |
 | `dependencies` | list of string | Other `item_id`s that must complete first. Validated for existence and cycles. |
 | `context` | object | Free-form, merged into the created worker task's context. **May never contain `execution_mode` or `approval_token`** — see WordPress Safety Boundaries below. |
 | `worker_task_id` | string | Set once queued. |
@@ -134,6 +134,15 @@ of truth for this table; keep this document in sync with it.
    `placement` row above) — no pre-existing Page Ops record required.
    Founder gating and the write-safety gate preserved and unchanged.
 
+2b. **WooCommerce taxonomy update/create** — `destination=wordpress`,
+   `execution_type` in (`taxonomy_update`, `taxonomy_create`) → Rene
+   (`wp_taxonomy_qa`) → WP Placement taxonomy (`wp_taxonomy_update` or
+   `wp_taxonomy_create`). See **WooCommerce Taxonomy Lane** below — these
+   are WooCommerce product-category terms, never WordPress pages, and
+   never routed through `wp_content_draft`/`wp_content_qa`/
+   `wp_page_update`/`wp_draft`. Founder gating and the write-safety gate
+   preserved and unchanged (see WordPress Safety Boundaries below).
+
 3. **Destination pack** — `execution_type=destination_pack` (any
    destination) → Sam (`destination_pack`).
 
@@ -171,6 +180,59 @@ alone never authorizes a live write or a publish — it only affects what a
 human reviewing the dry-run preview sees requested. Actual live execution
 still requires the separate, founder-driven approval-token flow, exactly
 as before this layer existed.
+
+The approval-token engine (`services/wp_write_safety.py`) additionally
+binds each token to an `object_type` (`"page"` by default, or
+`"woocommerce_product_category"` for the taxonomy lane below) — a token
+issued for one object type is refused if presented for the other, so a
+page approval can never be replayed against a taxonomy-term write or vice
+versa.
+
+---
+
+## WooCommerce Taxonomy Lane
+
+WooCommerce product categories are WordPress **taxonomy terms**
+(`product_cat`), not pages. They are read/written via the standard
+`wp/v2` REST route WooCommerce registers for this taxonomy —
+`/wp-json/wp/v2/product_cat` — using the same Basic-Auth application
+password as `/wp/v2/pages`; there is no separate `wc/v3` consumer-key
+API involved. Identified by a numeric `term_id`, never a `page_id`.
+
+**Client** (`services/wp_client.py`): `get_product_category(term_id)`,
+`find_product_category_by_slug(slug)`, `create_product_category(payload,
+execution_mode=...)`, `update_product_category(term_id, payload,
+execution_mode=...)`. Same three execution modes as the page client
+(`mock`/`dry_run`/`live`), same unified write-safety gate
+(`services/wp_write_safety.enforce_live_write`), passing
+`object_type="woocommerce_product_category"`.
+
+**QA** (`services/worker_queue._rene_qa_taxonomy_content`): always-on
+checks — name/slug present, numeric `term_id` present for updates,
+duplicate-slug refusal for creates (unless
+`context.duplicate_slug_confirmed`), description present/non-trivial/no
+`<script>`, duplicate/malformed link detection. Opt-in via
+`qa_requirements` (see Execution Item Schema above):
+`intro_required`, `how_to_required`, `faq_count:N`, `cta_required`,
+`min_internal_links:N`, `internal_only`, `seo_required`.
+
+**Dry-run preview** (`services/worker_queue._execute_wp_taxonomy_update`
+/ `_execute_wp_taxonomy_create`): shows `object_type`, `taxonomy`,
+`operation`, the exact `rest_endpoint` that would be called, current vs.
+proposed name/slug/description (with lengths), proposed internal links,
+and parent term — then issues a founder-approval token exactly like the
+page lane, with zero writes.
+
+**Proof logging**: taxonomy operations log to `db.wp_taxonomy_placements`
+(object_type, taxonomy, operation, term_id, term_slug, status,
+description length before/after, source execution item/manifest id,
+approval-token identity/status via the shared engine, a read-after-write
+verification flag, timestamp) — **not** `db.wp_placements`, so page
+placement logging is completely unaffected.
+
+Manifest content is authoritative for the taxonomy lane exactly as for
+`page_create`: Jenny is skipped, Rene QA runs first against the
+manifest's own `placement` fields.
 
 ---
 

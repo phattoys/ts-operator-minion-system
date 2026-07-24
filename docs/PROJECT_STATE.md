@@ -380,6 +380,99 @@ fulfillment, a broken-link crawler.
 
 ---
 
+### WooCommerce Taxonomy Lane — Product Categories
+
+- **Status: BUILT** (offline/mock-verified only — pending real-environment
+  dry-run proof against live WordPress/WooCommerce and MongoDB; **do not
+  mark known-good yet**)
+
+**Purpose:** Let OPS read, dry-run, founder-approve, create, and update
+WooCommerce product-category **taxonomy terms** through the Execution
+Manifest lane, without misrouting them through the WordPress *page*
+lane (`/wp/v2/pages`) they are not.
+
+Smallest safe vertical slice, reusing existing infrastructure end to end
+(no second write-safety system, no second approval-token engine, no
+change to the page create/update lanes):
+
+1. **Taxonomy REST client** — `services/wp_client.py` gained
+   `get_product_category()`, `find_product_category_by_slug()`,
+   `create_product_category()`, `update_product_category()`, targeting
+   `/wp-json/wp/v2/product_cat` (the standard `wp/v2` route WooCommerce
+   registers for this taxonomy — no separate `wc/v3` API needed for this
+   site). Keyed by numeric `term_id`, never a `page_id`. Mock mode writes
+   to `db.wp_mock_product_categories`, a collection entirely separate
+   from `db.wp_mock_pages`.
+2. **Object-type-bound approval tokens** — `services/wp_write_safety.py`
+   gained an `object_type` parameter (default `"page"`, so existing page
+   callers are byte-for-byte unaffected) threaded through
+   `issue_approval_token`/`consume_approval_token`/`enforce_live_write`.
+   A token issued for a page can never be consumed against a taxonomy
+   write, or vice versa — same single-use, payload-hash-bound,
+   scope-bound, expiring token engine as before, no second system.
+3. **Routing** — `services/execution_manifest.determine_routing()` gained
+   `taxonomy_update`/`taxonomy_create` → Rene (`wp_taxonomy_qa`) → WP
+   Placement (`wp_taxonomy_update`/`wp_taxonomy_create`). Manifest
+   content is authoritative; Jenny is skipped, matching the `page_create`
+   precedent.
+4. **Rene taxonomy QA** — `services/worker_queue._rene_qa_taxonomy_content()`
+   reuses the same link-hygiene helpers as page QA (duplicate/malformed
+   href, internal-only) plus taxonomy-specific checks: name/slug present,
+   numeric `term_id` required for updates, duplicate-slug refusal for
+   creates, and opt-in `intro_required` / `how_to_required` /
+   `faq_count:N` / `cta_required` / `min_internal_links:N` /
+   `internal_only` / `seo_required`.
+5. **WP Placement taxonomy dry-run/live** —
+   `_execute_wp_taxonomy_update()` / `_execute_wp_taxonomy_create()`
+   default to `dry_run` exactly like the page lane: build the proposed
+   description via a new `services/wp_placement.build_category_content()`
+   (plain WYSIWYG HTML — WooCommerce term descriptions aren't Flatsome
+   shortcode pages), show the exact `/wp-json/wp/v2/product_cat...`
+   endpoint that would be called, and issue an object-type-bound token.
+   Live/mock writes perform a read-after-write verification and log proof
+   to a **new** `db.wp_taxonomy_placements` collection — `db.wp_placements`
+   (page placement log) is untouched.
+6. **Backlog schema** — `docs/backlogs/ts-14-category-taxonomy-backlog-20260723.json`,
+   an executable Execution Manifest covering all 14 authoritative
+   categories (13 `taxonomy_update` + 1 `taxonomy_create`). `copy` and
+   `placement.description` are the literal placeholder
+   `"PENDING_CONTENT — not yet drafted"` — verified to validate and route
+   cleanly to `ready`/`needs_review` (correctly held at Rene QA pending
+   real content, never silently waved through).
+
+**Verified so far (offline, mock Mongo, no real WordPress/WooCommerce):**
+`backend/tests/test_wp_taxonomy_lane.py` (32 tests) plus full existing
+regression (132 tests: write-safety, worker-chain e2e, execution-manifest,
+page-create-hardening, page-production-completion) — all green, zero
+regressions. Confirms: taxonomy reads/writes use `/wp/v2/product_cat`
+never `/wp/v2/pages`; `term_id` never crosses with `page_id`; dry-run
+performs zero writes and issues a token; mock-mode write + read-after-write
+verification is recorded; a page-object-type token cannot be replayed
+against a taxonomy write and vice versa; tokens are single-use; live
+writes are refused (loudly, not silently downgraded) in this
+credential-less sandbox exactly like the page lane.
+
+**Not verified (blocked in this sandbox, same boundary as every prior
+phase — see the Phase 6 real-environment notes above):** behavior against
+a real MongoDB, and behavior against real WordPress/WooCommerce
+credentials. Do not run this lane's live-write path, and do not mark this
+lane known-good, until that real-environment dry-run proof has been done.
+
+Not built (explicitly out of scope for this narrow slice, per
+instruction): a `wc/v3` fallback client (not needed for this site), a
+dedicated HTTP route for direct (non-manifest) taxonomy placement (the
+existing generic `/api/worker-queue/tasks/{id}/execute` endpoint already
+works for taxonomy tasks with no route changes), automated
+dependency-blocking execution ordering (the manifest's `dependencies`
+field remains validated-for-existence/cycles only, same as before this
+build — the one real ordering constraint in the 14-category backlog,
+`strap-on-dildos` waiting on the new `lingerie-sets-babydolls-teddies`
+category, is handled by simply omitting that link from
+`related_links` until the dependency item is created, not by new
+scheduling logic).
+
+---
+
 ## OPS Handoff Architecture
 
 ```
@@ -412,6 +505,11 @@ Exactly four, defined in `WORKERS` in `services/worker_queue.py`:
 
 Do not invent responsibilities beyond what is present in code. This
 table reflects `services/worker_queue.py` as of `eb52b3200aa7309fc29ef53e4ce6cb448163f02d`.
+WP Placement's `task_types` were extended (not redefined) by the
+WooCommerce Taxonomy Lane above to also include `wp_taxonomy_update` /
+`wp_taxonomy_create` — its role and founder-gated/write-safety-gated
+behavior are unchanged; it now acts on two distinct object types (pages
+and WooCommerce category terms) via entirely separate code paths.
 
 ---
 
@@ -487,3 +585,22 @@ table reflects `services/worker_queue.py` as of `eb52b3200aa7309fc29ef53e4ce6cb4
   auto-suggestion fallback for new pages. All KNOWN-GOOD components
   (write-safety gate, worker chain, Phases 1-3) preserved and re-verified
   by full regression. Branch `ops/page-production-completion-20260722`.
+- **2026-07-23** — WooCommerce Taxonomy Lane built: the smallest safe
+  vertical slice so OPS can read/dry-run/founder-approve/create/update
+  WooCommerce product-category taxonomy terms without misrouting them
+  through the WordPress page lane. Term-aware `wp_client.py` functions
+  against `/wp/v2/product_cat`; `object_type`-bound approval tokens in the
+  existing (unmodified in behavior) write-safety engine; new
+  `taxonomy_update`/`taxonomy_create` routing to Rene (`wp_taxonomy_qa`) →
+  WP Placement (`wp_taxonomy_update`/`wp_taxonomy_create`); a new,
+  separate `db.wp_taxonomy_placements` proof log (page placement logging
+  untouched); the authoritative 14-category backlog schema at
+  `docs/backlogs/ts-14-category-taxonomy-backlog-20260723.json`. Page
+  create/update lanes, Rene page QA, and all prior KNOWN-GOOD components
+  preserved and re-verified by full regression (132 pre-existing + 32 new
+  taxonomy tests, all green). Status: BUILT, offline/mock-verified only —
+  **not marked known-good**; pending a real-environment dry-run proof
+  against live WordPress/WooCommerce and MongoDB. Branch
+  `ops/woocommerce-taxonomy-lane-20260723`, built on
+  `ops/page-create-hardening-known-good-20260723` @
+  `daebaf9bf4c1840f7334aa56d2fb47408cc01f5b`.

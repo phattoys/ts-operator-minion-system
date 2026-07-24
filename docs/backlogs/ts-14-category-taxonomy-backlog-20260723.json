@@ -1,0 +1,600 @@
+{
+  "manifest_id": null,
+  "schema_version": "1.0",
+  "source_system": "ops-founder-authored",
+  "source_packet_id": "ts-14-category-taxonomy-backlog-20260723",
+  "source_packet_type": "taxonomy_backlog",
+  "campaign_id": "ts-14-category-taxonomy-backlog-20260723",
+  "campaign_name": "Temporary Satisfaction — 14-Category Taxonomy Hardening",
+  "brand_id": null,
+  "brand_name": "Temporary Satisfaction",
+  "priority": "normal",
+  "due_at": null,
+  "created_by": "founder",
+  "notes": "Executable against the WooCommerce taxonomy lane (ops/woocommerce-taxonomy-lane-20260723). All 'copy' and placement.description fields are the literal placeholder 'PENDING_CONTENT — not yet drafted' -- this manifest proves the pipeline shape (validation -> routing -> Rene QA -> dry-run preview -> founder approval) end-to-end, it does NOT contain founder-approved final category copy. Queuing these items will correctly land in needs_review at Rene QA until real intro/how_to_guidance/faqs content is supplied, exactly as designed. See docs/backlogs/README.md for the internal-link dependency plan.",
+  "execution_items": [
+    {
+      "item_id": "tax-001",
+      "sequence": 1,
+      "title": "Masturbators & Strokers",
+      "description": "Hardening pass for the existing 'Masturbators & Strokers' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78144,
+        "slug": "masturbators-and-strokers",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-002",
+      "sequence": 2,
+      "title": "Cock Rings",
+      "description": "Hardening pass for the existing 'Cock Rings' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78147,
+        "slug": "cock-rings",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-003",
+      "sequence": 3,
+      "title": "Remote & App Controlled",
+      "description": "Hardening pass for the existing 'Remote & App Controlled' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78129,
+        "slug": "remote-and-app-controlled",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-004",
+      "sequence": 4,
+      "title": "Anal Plugs",
+      "description": "Hardening pass for the existing 'Anal Plugs' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78138,
+        "slug": "anal-plugs",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-005",
+      "sequence": 5,
+      "title": "Wearable & Panty Vibes",
+      "description": "Hardening pass for the existing 'Wearable & Panty Vibes' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78130,
+        "slug": "wearable-and-panty-vibes",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-006",
+      "sequence": 6,
+      "title": "Wand Massagers",
+      "description": "Hardening pass for the existing 'Wand Massagers' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78125,
+        "slug": "wand-massagers",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-007",
+      "sequence": 7,
+      "title": "Air Pulse & Suction",
+      "description": "Hardening pass for the existing 'Air Pulse & Suction' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78126,
+        "slug": "air-pulse-and-suction",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-008",
+      "sequence": 8,
+      "title": "Kegel & Benwa Balls",
+      "description": "Hardening pass for the existing 'Kegel & Benwa Balls' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78239,
+        "slug": "kegel-and-benwa-balls",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-009",
+      "sequence": 9,
+      "title": "Water Based Lubes",
+      "description": "Hardening pass for the existing 'Water Based Lubes' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "high",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78164,
+        "slug": "water-based-lubes",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-010",
+      "sequence": 10,
+      "title": "Dildos & Dongs",
+      "description": "Hardening pass for the existing 'Dildos & Dongs' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78235,
+        "slug": "dildos-and-dongs",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-011",
+      "sequence": 11,
+      "title": "Penis Pumps",
+      "description": "Hardening pass for the existing 'Penis Pumps' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78146,
+        "slug": "penis-pumps",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-012",
+      "sequence": 12,
+      "title": "Strap On Dildos",
+      "description": "Hardening pass for the existing 'Strap On Dildos' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 78136,
+        "slug": "strap-on-dildos",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [
+        "tax-014"
+      ],
+      "context": {},
+      "warnings": [
+        "content_not_drafted",
+        "related_link to 'tax-014' (lingerie-sets-babydolls-teddies) intentionally omitted from placement.related_links until that category is created -- see dependencies"
+      ]
+    },
+    {
+      "item_id": "tax-013",
+      "sequence": 13,
+      "title": "Clit Stimulators",
+      "description": "Hardening pass for the existing 'Clit Stimulators' WooCommerce product category.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_update",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": 77446,
+        "slug": "clit-stimulators",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    },
+    {
+      "item_id": "tax-014",
+      "sequence": 14,
+      "title": "Lingerie Sets, Babydolls & Teddies",
+      "description": "New WooCommerce product category created directly from Execution Manifest content.",
+      "content_type": "taxonomy_description",
+      "destination": "wordpress",
+      "execution_type": "taxonomy_create",
+      "status": "pending",
+      "priority": "normal",
+      "copy": "PENDING_CONTENT — not yet drafted",
+      "qa_requirements": [
+        "intro_required",
+        "how_to_required",
+        "faq_count:6",
+        "cta_required",
+        "min_internal_links:3",
+        "internal_only",
+        "seo_required"
+      ],
+      "placement": {
+        "term_id": null,
+        "slug": "lingerie-sets-babydolls-teddies",
+        "description": "PENDING_CONTENT — not yet drafted",
+        "introduction": null,
+        "how_to_guidance": null,
+        "faqs": [],
+        "parent": null,
+        "cta_text": null,
+        "cta_url": null,
+        "related_links": [
+          {
+            "url": "/product-category/wearable-and-panty-vibes",
+            "title": "Wearable & Panty Vibes"
+          }
+        ],
+        "seo_title": null,
+        "meta_description": null
+      },
+      "asset_refs": [],
+      "dependencies": [],
+      "context": {},
+      "warnings": [
+        "content_not_drafted"
+      ]
+    }
+  ],
+  "assets": []
+}

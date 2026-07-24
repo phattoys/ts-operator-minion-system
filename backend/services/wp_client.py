@@ -148,6 +148,101 @@ async def get_page(page_id: str) -> dict:
     return await _mock_get_page(page_id)
 
 
+# ================== WOOCOMMERCE TAXONOMY (PRODUCT CATEGORIES) ==================
+#
+# WooCommerce product categories are WordPress taxonomy TERMS, not pages.
+# WooCommerce registers the `product_cat` taxonomy as a public REST-API
+# taxonomy under the standard wp/v2 route (/wp-json/wp/v2/product_cat),
+# using the same Basic-Auth application-password credentials as /wp/v2/pages
+# -- there is no separate wc/v3 consumer-key/secret needed for this repo's
+# use case, so only the wp/v2/product_cat endpoint is implemented here.
+# Identified by a numeric term_id, which must never be confused with or
+# passed where a page_id is expected (see create_page()/update_page() above
+# -- entirely separate functions, entirely separate collections).
+#
+# create_product_category() and update_product_category() route through the
+# SAME unified write-safety gate as create_page()/update_page()
+# (services/wp_write_safety.enforce_live_write) -- no second approval
+# system. They pass object_type="woocommerce_product_category" so an
+# approval token issued for a page can never be replayed against a
+# taxonomy-term write, or vice versa.
+
+
+async def get_product_category(term_id: int) -> dict:
+    if IS_LIVE:
+        return await _live_get_product_category(term_id)
+    return await _mock_get_product_category(term_id)
+
+
+async def find_product_category_by_slug(slug: str) -> dict:
+    if IS_LIVE:
+        return await _live_find_product_category_by_slug(slug)
+    return await _mock_find_product_category_by_slug(slug)
+
+
+async def create_product_category(
+    payload: dict,
+    *,
+    execution_mode: str,
+    approval_token: str = None,
+    scope_ids: list = None,
+    user: dict = None,
+    object_type: str = "woocommerce_product_category",
+) -> dict:
+    if execution_mode == "mock":
+        return await _mock_create_product_category(payload)
+
+    if execution_mode != "live":
+        raise WpWriteSafetyError(
+            f"create_product_category() called with unsupported execution_mode={execution_mode!r}. "
+            "Dry runs must not call create_product_category() at all -- build a preview instead."
+        )
+
+    write_payload = {"taxonomy": "product_cat", **payload}
+    await enforce_live_write(
+        execution_mode=execution_mode,
+        approval_token=approval_token,
+        scope_ids=scope_ids or [payload.get("slug") or payload.get("name")],
+        payload=write_payload,
+        user=user or {},
+        is_live=IS_LIVE,
+        object_type=object_type,
+    )
+    return await _live_create_product_category(payload)
+
+
+async def update_product_category(
+    term_id: int,
+    payload: dict,
+    *,
+    execution_mode: str,
+    approval_token: str = None,
+    scope_ids: list = None,
+    user: dict = None,
+    object_type: str = "woocommerce_product_category",
+) -> dict:
+    if execution_mode == "mock":
+        return await _mock_update_product_category(term_id, payload)
+
+    if execution_mode != "live":
+        raise WpWriteSafetyError(
+            f"update_product_category() called with unsupported execution_mode={execution_mode!r}. "
+            "Dry runs must not call update_product_category() at all -- build a preview instead."
+        )
+
+    write_payload = {"term_id": term_id, "taxonomy": "product_cat", **payload}
+    await enforce_live_write(
+        execution_mode=execution_mode,
+        approval_token=approval_token,
+        scope_ids=scope_ids or [str(term_id)],
+        payload=write_payload,
+        user=user or {},
+        is_live=IS_LIVE,
+        object_type=object_type,
+    )
+    return await _live_update_product_category(term_id, payload)
+
+
 # ================== LIVE WORDPRESS REST API ==================
 
 def _normalize_wp_page(wp_data: dict) -> dict:
@@ -288,6 +383,117 @@ async def _live_get_page(page_id):
         return None
 
 
+def _normalize_wp_category(wp_data: dict) -> dict:
+    """Normalize a WP REST API product_cat term response into our standard format."""
+    return {
+        "term_id": wp_data.get("id"),
+        "name": wp_data.get("name", ""),
+        "slug": wp_data.get("slug", ""),
+        "description": wp_data.get("description", ""),
+        "parent": wp_data.get("parent", 0),
+        "count": wp_data.get("count", 0),
+        "link": wp_data.get("link", ""),
+        "taxonomy": wp_data.get("taxonomy", "product_cat"),
+        "object_type": "woocommerce_product_category",
+        "mock": False,
+    }
+
+
+async def _live_get_product_category(term_id: int):
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(f"{_api_base}/product_cat/{term_id}", headers=_headers, params={"context": "edit"})
+
+        if resp.status_code == 200:
+            return _normalize_wp_category(resp.json())
+        else:
+            logger.error(f"[WP Live] Get product_cat failed ({resp.status_code}): {resp.text[:300]}")
+            return None
+    except Exception as e:
+        logger.error(f"[WP Live] Get product_cat error: {e}")
+        return None
+
+
+async def _live_find_product_category_by_slug(slug: str):
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(f"{_api_base}/product_cat", headers=_headers, params={"slug": slug})
+
+        if resp.status_code == 200:
+            results = resp.json()
+            return _normalize_wp_category(results[0]) if results else None
+        else:
+            logger.error(f"[WP Live] Find product_cat by slug failed ({resp.status_code}): {resp.text[:300]}")
+            return None
+    except Exception as e:
+        logger.error(f"[WP Live] Find product_cat by slug error: {e}")
+        return None
+
+
+async def _live_create_product_category(payload: dict):
+    body = {
+        "name": payload.get("name"),
+        "slug": payload.get("slug") or "",
+        "description": payload.get("description", ""),
+    }
+    if payload.get("parent"):
+        body["parent"] = payload["parent"]
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(f"{_api_base}/product_cat", headers=_headers, json=body)
+
+        if resp.status_code in (200, 201):
+            term = _normalize_wp_category(resp.json())
+            logger.info(f"[WP Live] Created product category: {term['name']} (term_id: {term['term_id']})")
+
+            term["local_created_at"] = datetime.now(timezone.utc).isoformat()
+            await db.wp_live_product_categories.insert_one({**term})
+
+            return {k: v for k, v in term.items() if k != "_id"}
+        else:
+            error_detail = resp.text[:500]
+            logger.error(f"[WP Live] Create product_cat failed ({resp.status_code}): {error_detail}")
+            return None
+    except Exception as e:
+        logger.error(f"[WP Live] Create product_cat error: {e}")
+        return None
+
+
+async def _live_update_product_category(term_id: int, payload: dict):
+    body = {}
+    if payload.get("name"):
+        body["name"] = payload["name"]
+    if payload.get("slug"):
+        body["slug"] = payload["slug"]
+    if "description" in payload:
+        body["description"] = payload.get("description", "")
+    if payload.get("parent") is not None:
+        body["parent"] = payload["parent"]
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(f"{_api_base}/product_cat/{term_id}", headers=_headers, json=body)
+
+        if resp.status_code == 200:
+            term = _normalize_wp_category(resp.json())
+            logger.info(f"[WP Live] Updated product category term: {term_id}")
+
+            await db.wp_live_product_categories.update_one(
+                {"term_id": term_id},
+                {"$set": {**{k: v for k, v in term.items() if k != "_id"}, "local_updated_at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True,
+            )
+            return {k: v for k, v in term.items() if k != "_id"}
+        else:
+            error_detail = resp.text[:500]
+            logger.error(f"[WP Live] Update product_cat failed ({resp.status_code}): {error_detail}")
+            return None
+    except Exception as e:
+        logger.error(f"[WP Live] Update product_cat error: {e}")
+        return None
+
+
 # ================== MOCK IMPLEMENTATION ==================
 
 async def _mock_create_page(title, slug, content, status, meta):
@@ -345,3 +551,55 @@ async def _mock_get_pages(status, per_page):
 async def _mock_get_page(page_id):
     page = await db.wp_mock_pages.find_one({"id": page_id}, {"_id": 0})
     return page
+
+
+async def _mock_get_product_category(term_id: int):
+    return await db.wp_mock_product_categories.find_one({"term_id": term_id}, {"_id": 0})
+
+
+async def _mock_find_product_category_by_slug(slug: str):
+    return await db.wp_mock_product_categories.find_one({"slug": slug}, {"_id": 0})
+
+
+async def _mock_create_product_category(payload: dict):
+    now = datetime.now(timezone.utc).isoformat()
+    # Synthetic numeric term_id, distinct range from real WooCommerce term
+    # IDs and from the mock page "wp-xxxxxxxx" string IDs -- a term_id must
+    # always be numeric, never confused with a page_id.
+    term_id = 900000 + (uuid.uuid4().int % 99999)
+    name = payload.get("name") or ""
+    category = {
+        "term_id": term_id,
+        "name": name,
+        "slug": payload.get("slug") or name.lower().replace(" ", "-")[:60],
+        "description": payload.get("description", ""),
+        "parent": payload.get("parent") or 0,
+        "count": 0,
+        "link": f"https://yoursite.com/product-category/{payload.get('slug', '')}",
+        "taxonomy": "product_cat",
+        "object_type": "woocommerce_product_category",
+        "created_at": now,
+        "updated_at": now,
+        "mock": True,
+    }
+    await db.wp_mock_product_categories.insert_one(category)
+    logger.info(f"[WP Mock] Created product category: {name} (term_id {term_id})")
+    return {k: v for k, v in category.items() if k != "_id"}
+
+
+async def _mock_update_product_category(term_id: int, payload: dict):
+    category = await db.wp_mock_product_categories.find_one({"term_id": term_id}, {"_id": 0})
+    if not category:
+        return None
+    updates = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if payload.get("name"):
+        updates["name"] = payload["name"]
+    if payload.get("slug"):
+        updates["slug"] = payload["slug"]
+    if "description" in payload:
+        updates["description"] = payload.get("description", "")
+    if payload.get("parent") is not None:
+        updates["parent"] = payload["parent"]
+    await db.wp_mock_product_categories.update_one({"term_id": term_id}, {"$set": updates})
+    logger.info(f"[WP Mock] Updated product category term: {term_id}")
+    return await db.wp_mock_product_categories.find_one({"term_id": term_id}, {"_id": 0})

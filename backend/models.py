@@ -655,6 +655,16 @@ class ResolveDuplicateRequest(BaseModel):
 
 WP_PLACEMENT_MODES = ["create", "update"]
 
+# ---- WooCommerce Taxonomy Lane ----
+# WooCommerce product-category taxonomy terms are NOT WordPress pages. They
+# are read/written via /wp-json/wp/v2/product_cat (a standard taxonomy REST
+# route WooCommerce registers under wp/v2, not a separate wc/v3 API), keyed
+# by a numeric term_id -- never a page_id. See services/wp_client.py's
+# term-aware functions and services/worker_queue.py's
+# _execute_wp_taxonomy_update/_execute_wp_taxonomy_create.
+TAXONOMY_EXECUTION_TYPES = ["taxonomy_update", "taxonomy_create"]
+WOOCOMMERCE_PRODUCT_CATEGORY_OBJECT_TYPE = "woocommerce_product_category"
+
 
 # ---- WP Write-Safety Models ----
 # Unified write-safety contract for ALL WordPress write paths (direct route,
@@ -707,6 +717,11 @@ class WpApprovalRecord(BaseModel):
     scope_ids: List[str]
     payload_hash: str
     publication_mode: WpPublicationMode = WpPublicationMode.DRAFT
+    # "page" (default, existing pages) or "woocommerce_product_category"
+    # (taxonomy lane). A live write must present a token whose object_type
+    # matches the operation being performed -- see
+    # services/wp_write_safety.consume_approval_token().
+    object_type: str = "page"
     issued_at: datetime
     expires_at: datetime
     consumed: bool = False

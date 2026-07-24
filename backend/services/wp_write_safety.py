@@ -61,16 +61,21 @@ async def issue_approval_token(
     scope_ids: List[str],
     payload: Dict[str, Any],
     publication_mode: str = "draft",
+    object_type: str = "page",
 ) -> Dict[str, Any]:
     """
     Called at the end of a successful dry_run. Issues a short-lived,
     single-use token bound to this exact payload and scope.
 
     scope: "single" or "batch"
-    scope_ids: the page_id(s) or task_id(s) this token covers
+    scope_ids: the page_id(s)/term_id(s)/task_id(s) this token covers
     payload: the exact structured content that was previewed (used for hashing)
     publication_mode: "draft" or "publish" -- locked in at issuance time so a
         caller cannot request draft approval and then execute a publish.
+    object_type: "page" (default, unchanged existing behavior) or
+        "woocommerce_product_category" (taxonomy lane). Bound into the
+        token so it can never be consumed against the wrong object type --
+        see consume_approval_token().
     """
     now = datetime.now(timezone.utc)
     token = secrets.token_urlsafe(32)
@@ -80,6 +85,7 @@ async def issue_approval_token(
         "scope_ids": scope_ids,
         "payload_hash": hash_payload(payload),
         "publication_mode": publication_mode,
+        "object_type": object_type,
         "issued_at": now.isoformat(),
         "expires_at": (now + timedelta(minutes=WP_APPROVAL_TOKEN_TTL_MINUTES)).isoformat(),
         "consumed": False,
@@ -89,7 +95,7 @@ async def issue_approval_token(
         "approval_source": None,
     }
     await db.wp_write_approvals.insert_one(dict(record))
-    logger.info(f"[WP Safety] Issued approval token for scope={scope} ids={scope_ids} ttl={WP_APPROVAL_TOKEN_TTL_MINUTES}m")
+    logger.info(f"[WP Safety] Issued approval token for scope={scope} ids={scope_ids} object_type={object_type} ttl={WP_APPROVAL_TOKEN_TTL_MINUTES}m")
 
     return {k: v for k, v in record.items() if k != "_id"}
 
@@ -101,6 +107,7 @@ async def consume_approval_token(
     approved_by: str,
     approval_role: str,
     approval_source: str,
+    object_type: str = "page",
 ) -> Dict[str, Any]:
     """
     Validates and consumes an approval token for a live execution. Raises
@@ -112,7 +119,9 @@ async def consume_approval_token(
       3. token not already consumed
       4. token not expired
       5. scope_ids match exactly what was approved
-      6. payload hash still matches what was previewed
+      6. object_type matches what was approved (a page token can never be
+         replayed against a taxonomy-term write, or vice versa)
+      7. payload hash still matches what was previewed
 
     On success, marks the token consumed and records the server-derived
     approval identity (never taken from client input).
@@ -140,6 +149,12 @@ async def consume_approval_token(
     if sorted(record.get("scope_ids", [])) != sorted(scope_ids):
         raise WpWriteSafetyError(
             "Live WordPress write refused: approval_token scope does not match this operation."
+        )
+
+    if record.get("object_type", "page") != object_type:
+        raise WpWriteSafetyError(
+            "Live WordPress write refused: approval_token object_type does not match this operation "
+            f"(token was issued for '{record.get('object_type', 'page')}', operation is '{object_type}')."
         )
 
     current_hash = hash_payload(payload)
@@ -195,6 +210,7 @@ async def enforce_live_write(
     payload: Dict[str, Any],
     user: dict,
     is_live: bool,
+    object_type: str = "page",
 ) -> Optional[Dict[str, Any]]:
     """
     The single checkpoint wp_client.py calls before ANY real WordPress
@@ -205,6 +221,12 @@ async def enforce_live_write(
     Raises WpWriteSafetyError for any failure. Callers must NOT catch this
     and silently proceed as mock -- that is exactly the accidental-live
     (or accidental-silent-no-op) behavior this gate exists to prevent.
+
+    object_type defaults to "page" (unchanged existing behavior for
+    create_page()/update_page()). The taxonomy lane's
+    create_product_category()/update_product_category() pass
+    object_type="woocommerce_product_category" so a token issued for one
+    object type can never be consumed against the other.
     """
     if execution_mode in ("mock", "dry_run"):
         return None
@@ -227,4 +249,5 @@ async def enforce_live_write(
         approved_by=identity["approved_by"],
         approval_role=identity["approval_role"],
         approval_source=identity["approval_source"],
+        object_type=object_type,
     )

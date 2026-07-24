@@ -162,8 +162,15 @@ async def validate_manifest(manifest: dict) -> list:
             errors.append(f"item {iid}: execution_type is required")
 
         # Required instructions/content where applicable: any item destined
-        # for actual content production needs copy or instructions.
-        if destination == "wordpress" and execution_type in ("content_draft", "page_update", "page_create"):
+        # for actual content production needs copy or instructions. Applies
+        # equally to the taxonomy lane (taxonomy_update/taxonomy_create) --
+        # a WooCommerce category term needs some content source too, it's
+        # just structured differently downstream (see placement.name/slug/
+        # description fields, docs/EXECUTION_MANIFEST_SCHEMA.md).
+        if destination == "wordpress" and execution_type in (
+            "content_draft", "page_update", "page_create",
+            "taxonomy_update", "taxonomy_create",
+        ):
             if not (item.get("copy") or "").strip() and not (item.get("instructions") or "").strip():
                 errors.append(f"item {iid}: wordpress {execution_type} requires 'copy' or 'instructions'")
 
@@ -262,6 +269,19 @@ def determine_routing(item: dict) -> dict:
                 "worker": "rene",
                 "task_type": "wp_content_qa",
                 "reason": "Routed to Rene (wp_content_qa) -> WP Placement create (wp_draft), write-safety gated.",
+            }
+        if execution_type in ("taxonomy_update", "taxonomy_create"):
+            # WooCommerce product-category taxonomy terms -- NOT WordPress
+            # pages. Never routed through wp_content_draft/wp_content_qa/
+            # wp_page_update/wp_draft (those are page-shaped task_types).
+            # Manifest content is authoritative; Jenny is skipped here
+            # exactly like page_create.
+            return {
+                "support": "supported_now",
+                "worker": "rene",
+                "task_type": "wp_taxonomy_qa",
+                "reason": "Routed to Rene (wp_taxonomy_qa) -> WP Placement taxonomy "
+                          f"({'wp_taxonomy_create' if execution_type == 'taxonomy_create' else 'wp_taxonomy_update'}), write-safety gated.",
             }
         return {
             "support": "needs_review",
@@ -593,6 +613,42 @@ async def queue_execution_item(manifest_id: str, item_id: str, user: dict = None
             task_context.setdefault("meta_description", placement["meta_description"])
         if placement.get("publication_mode"):
             task_context.setdefault("publication_mode", placement["publication_mode"])
+
+    if routing["worker"] == "rene" and routing["task_type"] == "wp_taxonomy_qa":
+        # taxonomy_update/taxonomy_create: WooCommerce product-category
+        # taxonomy term, NOT a WordPress page. Rene QA runs first on the
+        # manifest's own content (rendered via
+        # services/wp_placement.build_category_content()); only if QA
+        # passes does routing hand off to WP Placement's taxonomy
+        # create/update path. term_id is required for updates and must
+        # never be confused with a page_id or wp_page_id.
+        placement = item.get("placement") or {}
+        execution_type = item.get("execution_type")
+        manifest_category_data = {
+            "object_type": "woocommerce_product_category",
+            "taxonomy": "product_cat",
+            "operation": execution_type,
+            "term_id": placement.get("term_id"),
+            "name": item.get("title") or placement.get("name"),
+            "slug": placement.get("slug"),
+            "description": placement.get("description") or item.get("copy"),
+            "introduction": placement.get("introduction"),
+            "how_to_guidance": placement.get("how_to_guidance"),
+            "faqs": placement.get("faqs", []),
+            "parent": placement.get("parent"),
+            "cta_text": placement.get("cta_text"),
+            "cta_url": placement.get("cta_url"),
+            "related_links": placement.get("related_links", []),
+            "seo_title": placement.get("seo_title"),
+            "meta_description": placement.get("meta_description"),
+        }
+        task_context.setdefault("manifest_category_data", manifest_category_data)
+        if item.get("qa_requirements"):
+            task_context.setdefault("qa_requirements", item["qa_requirements"])
+        if placement.get("related_links"):
+            task_context.setdefault("related_links", placement["related_links"])
+        if placement.get("duplicate_slug_confirmed"):
+            task_context.setdefault("duplicate_slug_confirmed", placement["duplicate_slug_confirmed"])
 
     task_context.update({
         "manifest_id": manifest_id,

@@ -4,6 +4,65 @@ builds Flatsome/UX Builder shortcode output.
 """
 
 
+def build_category_content(data: dict) -> dict:
+    """
+    Compose a WooCommerce product-category term description from
+    structured fields (introduction, how-to/choosing guidance, FAQs,
+    related-category links, CTA).
+
+    Category descriptions are plain WYSIWYG HTML stored on the taxonomy
+    term itself, not a Flatsome UX-Builder shortcode page like
+    build_page_content() renders for ordinary WordPress pages -- so this
+    is a separate, simpler renderer, not a reuse of that one. Used by both
+    Rene's taxonomy QA (preview render) and the WP Placement taxonomy
+    create/update path, so what QA inspects is exactly what gets written.
+    """
+    data = data or {}
+    parts = []
+    warnings = []
+
+    intro = (data.get("introduction") or "").strip()
+    if intro:
+        parts.append(f"<p>{intro}</p>")
+
+    how_to = (data.get("how_to_guidance") or "").strip()
+    if how_to:
+        parts.append(f"<h3>How to Choose</h3>\n<p>{how_to}</p>")
+
+    faqs = data.get("faqs") or []
+    faq_parts = []
+    for faq in faqs:
+        if isinstance(faq, dict):
+            question = (faq.get("question") or "").strip()
+            answer = (faq.get("answer") or "").strip()
+            if question and answer:
+                faq_parts.append(f"<h4>{question}</h4>\n<p>{answer}</p>")
+    if faq_parts:
+        parts.append("<h3>Frequently Asked Questions</h3>\n" + "\n".join(faq_parts))
+
+    related_links = data.get("related_links") or []
+    link_items = []
+    for link in related_links:
+        if isinstance(link, dict):
+            link_items.append(f'<li><a href="{link.get("url", "#")}">{link.get("title", "Link")}</a></li>')
+    if link_items:
+        parts.append("<h3>Related Categories</h3>\n<ul>\n" + "\n".join(link_items) + "\n</ul>")
+
+    cta_text = (data.get("cta_text") or "").strip()
+    cta_url = (data.get("cta_url") or "").strip()
+    if cta_text and cta_url:
+        parts.append(f'<p><a href="{cta_url}" class="category-cta">{cta_text}</a></p>')
+    elif cta_text and not cta_url:
+        warnings.append("CTA text provided but URL is missing")
+    elif not cta_text and not cta_url:
+        warnings.append("No CTA provided — CTA section left empty")
+
+    if not parts:
+        warnings.append("No description content produced from supplied fields")
+
+    return {"html": "\n\n".join(parts), "warnings": warnings}
+
+
 def build_page_content(template: dict, content: dict) -> dict:
     """
     Takes a template definition and structured content dict,

@@ -39,7 +39,12 @@ WORKERS = {
         "name": "WP Placement",
         "role": "WordPress Action Worker",
         "auto_execute": False,
-        "task_types": ["wp_draft", "page_placement", "wp_page_update"],
+        "task_types": [
+            "wp_draft", "page_placement", "wp_page_update",
+            # Taxonomy lane (WooCommerce product categories, NOT pages) --
+            # see _execute_wp_taxonomy_update/_execute_wp_taxonomy_create.
+            "wp_taxonomy_update", "wp_taxonomy_create",
+        ],
     },
 }
 
@@ -105,6 +110,9 @@ def _get_next_action_label(worker: str, task_type: str) -> str:
         ("wp_placement", "wp_page_update"): "Update existing WordPress page",
         ("jenny", "wp_content_draft"): "Draft content update for WordPress page",
         ("rene", "wp_content_qa"): "QA content update before WordPress placement",
+        ("rene", "wp_taxonomy_qa"): "QA WooCommerce category content before taxonomy placement",
+        ("wp_placement", "wp_taxonomy_update"): "Update existing WooCommerce product category",
+        ("wp_placement", "wp_taxonomy_create"): "Create new WooCommerce product category",
     }
     return labels.get((worker, task_type), f"{worker}: {task_type}")
 
@@ -446,6 +454,10 @@ async def _execute_rene(task: dict) -> dict:
     if task_type == "wp_content_qa":
         return await _rene_qa_wp_content(task)
 
+    # --- WooCommerce Taxonomy Content QA (NOT a WordPress page) ---
+    if task_type == "wp_taxonomy_qa":
+        return await _rene_qa_taxonomy_content(task)
+
     # --- Field Listing QA ---
     item_id = task["source_item_id"]
     item = await db.field_items.find_one({"id": item_id}, {"_id": 0})
@@ -770,6 +782,180 @@ async def _rene_qa_wp_content(task: dict) -> dict:
     }
 
 
+async def _rene_qa_taxonomy_content(task: dict) -> dict:
+    """
+    Rene QA for WooCommerce product-category taxonomy terms -- a distinct
+    object type from WordPress pages (term_id, not page_id; no Flatsome
+    sections; no draft/publish status). Reuses the same link-hygiene
+    helpers as _rene_qa_wp_content() (duplicate/malformed href detection,
+    internal-only enforcement) so taxonomy content is held to the same
+    hygiene bar without duplicating that logic, and the same
+    context.qa_requirements opt-in convention so no category is forced
+    into another category's requirements.
+
+    The manifest content is authoritative here (see
+    services/execution_manifest.queue_execution_item()'s
+    manifest_category_data, built for taxonomy_update/taxonomy_create
+    items) -- there is no Jenny drafting step for the taxonomy lane unless
+    content is absent, matching manifest page_create's precedent.
+    """
+    context = task.get("context", {})
+    data = context.get("manifest_category_data") or {}
+    qa_requirements = context.get("qa_requirements") or []
+    related_links = context.get("related_links") or data.get("related_links") or []
+
+    object_type = data.get("object_type", "woocommerce_product_category")
+    operation = data.get("operation")
+    name = (data.get("name") or "").strip()
+    slug = (data.get("slug") or "").strip()
+    term_id = data.get("term_id")
+
+    issues = []
+    warnings = []
+
+    if object_type != "woocommerce_product_category":
+        issues.append(f"Unsupported object_type for taxonomy QA: '{object_type}'")
+
+    if not name:
+        issues.append("Taxonomy category name is missing")
+    if not slug:
+        issues.append("Taxonomy category slug is missing")
+
+    if operation == "taxonomy_update":
+        if term_id is None or not str(term_id).strip():
+            issues.append("Update requires a term_id — none supplied")
+        else:
+            try:
+                if int(term_id) <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                issues.append(f"Update requires a valid numeric term_id — got '{term_id}'")
+    elif operation == "taxonomy_create":
+        if slug:
+            from services.wp_client import find_product_category_by_slug
+            existing = await find_product_category_by_slug(slug)
+            if existing and not context.get("duplicate_slug_confirmed"):
+                issues.append(
+                    f"A product category with slug '{slug}' already exists (term_id={existing.get('term_id')}) "
+                    "— set duplicate_slug_confirmed if this is intentional duplicate handling"
+                )
+    else:
+        issues.append(f"Unrecognized taxonomy operation: '{operation}'")
+
+    # Render the exact description preview so QA inspects what WP
+    # Placement will actually write, same convention as page_create.
+    from services.wp_placement import build_category_content
+    description = context.get("drafted_description") or ""
+    if not description:
+        rendered = build_category_content(data)
+        description = rendered["html"]
+        warnings.extend(rendered["warnings"])
+
+    if not description:
+        issues.append("No taxonomy description content found")
+
+    if description and len(description) < 20:
+        issues.append(f"Taxonomy description is too short ({len(description)} chars)")
+
+    if description and "<script" in description.lower():
+        issues.append("Taxonomy description contains <script> tag — potential security issue")
+
+    # ---- Always-on link hygiene (shared with page QA) ----
+    hrefs = _extract_hrefs(description) if description else []
+
+    seen = set()
+    duplicates = set()
+    for h in hrefs:
+        if h in seen:
+            duplicates.add(h)
+        seen.add(h)
+    if duplicates:
+        issues.append(f"Duplicate internal-link URL(s) found: {', '.join(sorted(duplicates))}")
+
+    for h in hrefs:
+        if _is_malformed_href(h):
+            warnings.append(f"Possibly malformed link href: '{h}'")
+
+    for link in related_links:
+        if isinstance(link, dict) and link.get("internal") is True:
+            link_href = link.get("url") or link.get("slug") or ""
+            if link_href and not _is_internal_href(link_href) and not link_href.startswith(("/",)):
+                issues.append(f"Link marked internal is not actually internal: '{link_href}'")
+
+    # ---- Requirement-driven checks: only run when declared ----
+    for req in qa_requirements:
+        req = (req or "").strip()
+        if not req:
+            continue
+
+        if req == "cta_required":
+            cta_present = bool(data.get("cta_text") and data.get("cta_url"))
+            if not cta_present and re.search(r'<a\s+[^>]*href', description or "", re.IGNORECASE):
+                cta_present = True
+            if not cta_present:
+                issues.append("Required CTA not found in taxonomy description")
+
+        elif req.startswith("min_internal_links:"):
+            try:
+                min_links = int(req.split(":", 1)[1])
+            except ValueError:
+                warnings.append(f"Malformed qa_requirement ignored: '{req}'")
+            else:
+                internal_count = len([h for h in hrefs if _is_internal_href(h)])
+                if internal_count < min_links:
+                    issues.append(f"Minimum internal-link count not met: found {internal_count}, required {min_links}")
+
+        elif req == "internal_only":
+            external = [h for h in hrefs if not _is_internal_href(h) and not h.lower().startswith("mailto:")]
+            if external:
+                issues.append(f"Non-internal link(s) found where internal-only was required: {', '.join(external)}")
+
+        elif req == "intro_required":
+            if not (data.get("introduction") or "").strip():
+                issues.append("Required introduction content missing")
+
+        elif req == "how_to_required":
+            if not (data.get("how_to_guidance") or "").strip():
+                issues.append("Required how-to/choosing guidance missing")
+
+        elif req.startswith("faq_count:"):
+            try:
+                min_faqs = int(req.split(":", 1)[1])
+            except ValueError:
+                warnings.append(f"Malformed qa_requirement ignored: '{req}'")
+            else:
+                faqs = [f for f in (data.get("faqs") or [])
+                        if isinstance(f, dict) and (f.get("question") or "").strip() and (f.get("answer") or "").strip()]
+                if len(faqs) < min_faqs:
+                    issues.append(f"Minimum FAQ count not met: found {len(faqs)}, required {min_faqs}")
+
+        elif req == "seo_required":
+            if not data.get("seo_title"):
+                warnings.append("SEO title not supplied — required for this category")
+            if not data.get("meta_description"):
+                warnings.append("Meta description not supplied — required for this category")
+
+        else:
+            warnings.append(f"Unrecognized qa_requirement ignored: '{req}'")
+
+    if issues:
+        return {
+            "needs_review": True,
+            "reason": f"Taxonomy content QA failed for '{name or slug or term_id}': {'; '.join(issues)}",
+            "issues": issues,
+            "warnings": warnings,
+            "passed": False,
+        }
+
+    return {
+        "success": True,
+        "passed": True,
+        "issues": [],
+        "warnings": warnings,
+        "summary": f"Taxonomy content QA passed for '{name}' ({len(description)} chars ready)" + (f" — {len(warnings)} warning(s)" if warnings else ""),
+    }
+
+
 # ---- Sam: Routing / Pack Worker ----
 
 async def _execute_sam(task: dict) -> dict:
@@ -824,6 +1010,13 @@ async def _execute_wp(task: dict, user: dict = None) -> dict:
     # Route to update handler for existing page updates
     if task_type == "wp_page_update":
         return await _execute_wp_update(task, user=user)
+
+    # Route to the WooCommerce taxonomy handlers -- NOT WordPress pages,
+    # never routed through /wp/v2/pages.
+    if task_type == "wp_taxonomy_update":
+        return await _execute_wp_taxonomy_update(task, user=user)
+    if task_type == "wp_taxonomy_create":
+        return await _execute_wp_taxonomy_create(task, user=user)
 
     # Route to the manifest-sourced create path when the Execution
     # Manifest supplied its own structured page content directly
@@ -1378,6 +1571,297 @@ async def _execute_wp_update(task: dict, user: dict = None) -> dict:
     }
 
 
+# ---- WP Placement Worker: WooCommerce Taxonomy Lane ----
+#
+# These two functions are the ONLY places (besides services/wp_client.py's
+# create_product_category()/update_product_category()) that touch a
+# WooCommerce product-category term. They never call create_page()/
+# update_page() and never write to db.wp_placements' page-shaped records --
+# category proof records go to db.wp_taxonomy_placements, keeping page
+# placement logging completely unchanged.
+
+async def _execute_wp_taxonomy_update(task: dict, user: dict = None) -> dict:
+    """
+    WP Placement: UPDATE an existing WooCommerce product-category term's
+    description (and optionally name/parent) -- NOT a WordPress page.
+
+    Same write-safety gate and dry-run default as _execute_wp_update():
+    task["context"]["execution_mode"] defaults to "dry_run", which builds
+    the exact proposed description and returns it as a preview +
+    approval_token bound to object_type="woocommerce_product_category"
+    (see services/wp_write_safety.py) without writing anywhere.
+    """
+    from services.wp_client import get_product_category, update_product_category, IS_LIVE
+    from services.wp_write_safety import issue_approval_token, WpWriteSafetyError
+    from services.wp_placement import build_category_content
+
+    context = task.get("context", {}) or {}
+    data = context.get("manifest_category_data", {}) or {}
+    execution_item_id = task["source_item_id"]
+    warnings = []
+    execution_mode = context.get("execution_mode", "dry_run")
+    approval_token = context.get("approval_token")
+
+    term_id = data.get("term_id")
+    if term_id is None or not str(term_id).strip():
+        return {"error": "Taxonomy update has no term_id", "success": False}
+    try:
+        term_id_int = int(term_id)
+    except (TypeError, ValueError):
+        return {"error": f"Taxonomy update term_id is not numeric: '{term_id}'", "success": False}
+
+    current = await get_product_category(term_id_int)
+    if not current:
+        return {"error": f"Product category term {term_id_int} not found", "success": False}
+
+    name = (data.get("name") or "").strip() or current.get("name")
+    slug = (data.get("slug") or "").strip() or current.get("slug")
+    parent = data.get("parent", current.get("parent"))
+
+    description = context.get("drafted_description") or ""
+    if not description:
+        rendered = build_category_content(data)
+        description = rendered["html"]
+        warnings.extend(rendered["warnings"])
+
+    write_payload = {
+        "term_id": term_id_int,
+        "taxonomy": "product_cat",
+        "name": name,
+        "slug": slug,
+        "description": description,
+        "parent": parent,
+    }
+
+    # ---- DRY RUN (default): preview + approval token, no write ----
+    if execution_mode == "dry_run":
+        approval = await issue_approval_token(
+            scope="single",
+            scope_ids=[str(term_id_int)],
+            payload=write_payload,
+            publication_mode="n/a",
+            object_type="woocommerce_product_category",
+        )
+        return {
+            "needs_review": True,
+            "reason": "Dry-run preview ready — review and re-execute with execution_mode=live to write to WooCommerce",
+            "preview": {
+                "object_type": "woocommerce_product_category",
+                "taxonomy": "product_cat",
+                "operation": "taxonomy_update",
+                "rest_endpoint": f"/wp-json/wp/v2/product_cat/{term_id_int}",
+                "term_id": term_id_int,
+                "current_name": current.get("name"),
+                "current_slug": current.get("slug"),
+                "current_description_length": len(current.get("description") or ""),
+                "proposed_name": name,
+                "proposed_slug": slug,
+                "proposed_description": description,
+                "proposed_description_length": len(description),
+                "proposed_internal_links": data.get("related_links", []),
+                "parent": parent,
+            },
+            "approval_token": approval["token"],
+            "expires_at": approval["expires_at"],
+            "warnings": warnings,
+        }
+
+    # ---- MOCK / LIVE: an actual write is being requested ----
+    try:
+        updated = await update_product_category(
+            term_id_int,
+            {"name": name, "slug": slug, "description": description, "parent": parent},
+            execution_mode=execution_mode,
+            approval_token=approval_token,
+            scope_ids=[str(term_id_int)],
+            user=user,
+            object_type="woocommerce_product_category",
+        )
+    except WpWriteSafetyError as e:
+        return {"error": str(e), "success": False, "warnings": warnings}
+
+    if not updated:
+        return {"error": f"WooCommerce category update failed for term {term_id_int}", "success": False, "warnings": warnings}
+
+    # Read-after-write verification
+    verify = await get_product_category(term_id_int)
+    verified = bool(verify and verify.get("description") == description)
+    if not verified:
+        warnings.append("Read-after-write verification did not confirm the description matches what was written")
+
+    now = datetime.now(timezone.utc).isoformat()
+    log_entry = {
+        "id": str(uuid.uuid4()),
+        "object_type": "woocommerce_product_category",
+        "taxonomy": "product_cat",
+        "operation": "taxonomy_update",
+        "term_id": term_id_int,
+        "term_slug": updated.get("slug", slug),
+        "status": "completed",
+        "description_length_before": len(current.get("description") or ""),
+        "description_length_after": len(description),
+        "source_execution_item_id": execution_item_id,
+        "source_manifest_id": context.get("manifest_id"),
+        "execution_mode": execution_mode,
+        "wp_connected": IS_LIVE,
+        "read_after_write_verified": verified,
+        "warnings": warnings,
+        "created_at": now,
+    }
+    await db.wp_taxonomy_placements.insert_one(log_entry)
+
+    return {
+        "success": True,
+        "object_type": "woocommerce_product_category",
+        "term_id": term_id_int,
+        "term_slug": updated.get("slug", slug),
+        "wp_connected": IS_LIVE,
+        "mock": updated.get("mock", False),
+        "read_after_write_verified": verified,
+        "warnings": warnings,
+        "summary": f"Updated WooCommerce category term {term_id_int} ({updated.get('slug', slug)})",
+    }
+
+
+async def _execute_wp_taxonomy_create(task: dict, user: dict = None) -> dict:
+    """
+    WP Placement: CREATE a new WooCommerce product-category term directly
+    from an Execution Manifest taxonomy_create item's own content -- NOT a
+    WordPress page. Refuses to proceed if a category with the same exact
+    slug already exists, unless context.duplicate_slug_confirmed is set
+    (same guard Rene's QA already checks; re-checked here as defense in
+    depth since QA and placement can run at different times).
+    """
+    from services.wp_client import find_product_category_by_slug, get_product_category, create_product_category, IS_LIVE
+    from services.wp_write_safety import issue_approval_token, WpWriteSafetyError
+    from services.wp_placement import build_category_content
+
+    context = task.get("context", {}) or {}
+    data = context.get("manifest_category_data", {}) or {}
+    execution_item_id = task["source_item_id"]
+    warnings = []
+    execution_mode = context.get("execution_mode", "dry_run")
+    approval_token = context.get("approval_token")
+
+    name = (data.get("name") or "").strip()
+    if not name:
+        return {"error": "Manifest taxonomy_create item has no name", "success": False}
+    slug = (data.get("slug") or "").strip() or name.lower().replace(" ", "-")[:60]
+    parent = data.get("parent")
+
+    existing = await find_product_category_by_slug(slug)
+    if existing and not context.get("duplicate_slug_confirmed"):
+        return {
+            "needs_review": True,
+            "reason": f"A product category with slug '{slug}' already exists (term_id={existing.get('term_id')}) — resolve duplicate before creating",
+            "warnings": warnings,
+        }
+
+    description = context.get("drafted_description") or ""
+    if not description:
+        rendered = build_category_content(data)
+        description = rendered["html"]
+        warnings.extend(rendered["warnings"])
+
+    write_payload = {
+        "taxonomy": "product_cat",
+        "name": name,
+        "slug": slug,
+        "description": description,
+        "parent": parent,
+    }
+
+    # ---- DRY RUN (default): preview + approval token, no write ----
+    if execution_mode == "dry_run":
+        approval = await issue_approval_token(
+            scope="single",
+            scope_ids=[execution_item_id],
+            payload=write_payload,
+            publication_mode="n/a",
+            object_type="woocommerce_product_category",
+        )
+        return {
+            "needs_review": True,
+            "reason": "Dry-run preview ready — review and re-execute with execution_mode=live to create in WooCommerce",
+            "preview": {
+                "object_type": "woocommerce_product_category",
+                "taxonomy": "product_cat",
+                "operation": "taxonomy_create",
+                "rest_endpoint": "/wp-json/wp/v2/product_cat",
+                "term_id": None,
+                "current_name": None,
+                "current_slug": None,
+                "current_description_length": 0,
+                "proposed_name": name,
+                "proposed_slug": slug,
+                "proposed_description": description,
+                "proposed_description_length": len(description),
+                "proposed_internal_links": data.get("related_links", []),
+                "parent": parent,
+            },
+            "approval_token": approval["token"],
+            "expires_at": approval["expires_at"],
+            "warnings": warnings,
+        }
+
+    # ---- MOCK / LIVE: an actual write is being requested ----
+    try:
+        created = await create_product_category(
+            {"name": name, "slug": slug, "description": description, "parent": parent},
+            execution_mode=execution_mode,
+            approval_token=approval_token,
+            scope_ids=[execution_item_id],
+            user=user,
+            object_type="woocommerce_product_category",
+        )
+    except WpWriteSafetyError as e:
+        return {"error": str(e), "success": False, "warnings": warnings}
+
+    if not created:
+        return {"error": "WooCommerce category creation failed", "success": False, "warnings": warnings}
+
+    # Read-after-write verification -- confirm the exact returned term_id
+    # and slug actually resolve to a real term.
+    created_term_id = created.get("term_id")
+    verify = await get_product_category(created_term_id) if created_term_id is not None else None
+    verified = bool(verify and verify.get("slug") == created.get("slug") and verify.get("term_id") == created_term_id)
+    if not verified:
+        warnings.append("Read-after-write verification did not confirm the created term_id/slug")
+
+    now = datetime.now(timezone.utc).isoformat()
+    log_entry = {
+        "id": str(uuid.uuid4()),
+        "object_type": "woocommerce_product_category",
+        "taxonomy": "product_cat",
+        "operation": "taxonomy_create",
+        "term_id": created_term_id,
+        "term_slug": created.get("slug", slug),
+        "status": "completed",
+        "description_length_before": 0,
+        "description_length_after": len(description),
+        "source_execution_item_id": execution_item_id,
+        "source_manifest_id": context.get("manifest_id"),
+        "execution_mode": execution_mode,
+        "wp_connected": IS_LIVE,
+        "read_after_write_verified": verified,
+        "warnings": warnings,
+        "created_at": now,
+    }
+    await db.wp_taxonomy_placements.insert_one(log_entry)
+
+    return {
+        "success": True,
+        "object_type": "woocommerce_product_category",
+        "term_id": created_term_id,
+        "term_slug": created.get("slug", slug),
+        "wp_connected": IS_LIVE,
+        "mock": created.get("mock", False),
+        "read_after_write_verified": verified,
+        "warnings": warnings,
+        "summary": f"Created WooCommerce category term {created_term_id} ({created.get('slug', slug)})",
+    }
+
+
 # ---- Routing After Completion ----
 
 async def _route_next(task: dict):
@@ -1417,6 +1901,20 @@ async def _route_next(task: dict):
                     source_item_id=item_id,
                     worker="wp_placement",
                     task_type="wp_draft" if is_create else "wp_page_update",
+                    context=context,
+                )
+            elif task_type == "wp_taxonomy_qa":
+                # taxonomy_create -> WP Placement CREATE (wp_taxonomy_create);
+                # taxonomy_update -> WP Placement UPDATE (wp_taxonomy_update).
+                # Never routed through the page create/update task_types.
+                manifest_category_data = context.get("manifest_category_data") or {}
+                operation = manifest_category_data.get("operation")
+                taxonomy_task_type = "wp_taxonomy_create" if operation == "taxonomy_create" else "wp_taxonomy_update"
+                await create_worker_task(
+                    source_module=task.get("source_module", "execution_manifest"),
+                    source_item_id=item_id,
+                    worker="wp_placement",
+                    task_type=taxonomy_task_type,
                     context=context,
                 )
             else:
